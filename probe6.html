@@ -112,7 +112,7 @@ try{
     // Find header and redirect
     const tgt=0x7fdffffe01100011n;
     let hx=-1;
-    for(let k=0x7FF0;k<=0x800F;k++){try{if(f2i(master[k])===tgt){hx=k;break;}}catch(e){break;}}
+    for(let k=0x7FFE;k<=0x8001;k++){try{if(f2i(master[k])===tgt){hx=k;break;}}catch(e){break;}}
     if(hx>=0){
       log("HDR@"+hx.toString(16));
       master[hx]=i2f(0x7fdffffe01100011n); // keep same (0x1100011) - just verify it works
