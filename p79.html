@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><title>P79</title></head>
+<!doctype html><html><head><meta charset="utf-8"><title>P79b</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -56,7 +56,7 @@ if(OB>=0){
     try{
       const lo=flo(m[idx]),hi=fhi(m[idx]);
       for(const ptr of [lo,hi]){
-        if(ptr>0x1080000&&ptr<0x1200000&&(ptr&1)){
+        if(ptr>0x1000000&&ptr<0x1800000&&(ptr&1)){
           const pr=ptr&0xFFFFFFFE;
           // Scan WEFD for Smi fields: function_index is stored as Smi
           // Smi 0 = 0x00000000, Smi 1 = 0x00000002
