@@ -1,5 +1,5 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>P46</title></head>
+<html><head><meta charset="utf-8"><title>P46b</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -55,7 +55,7 @@ if(Array.isArray(m)){
   // Scan SAFE window m[0..0x7000] for marker pattern (lo==hi odd pairs)
   // collect ALL marker candidates
   const cands=[];
-  for(let k=0x8000;k<0x10000;k++){
+  for(let k=0x8000;k<0x10010;k++){
     try{
       const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
       if(lo===hi&&(lo&1n)===1n&&lo>0x1000n&&lo<0x2000000n){
