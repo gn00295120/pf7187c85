@@ -50,7 +50,7 @@ if(Array.isArray(m)){
 
   Promise.allSettled(probes.map(([name,url])=>{
     const ac=new AbortController();setTimeout(()=>ac.abort(),2500);
-    return fetch(url,{signal:ac.signal,credentials:"include"}).then(r=>{
+    return fetch(url,{signal:ac.signal,mode:"no-cors"}).then(r=>{
       log(name+":"+r.status);
       return r.text().then(t=>log(name+"_B:"+t.substring(0,100)));
     }).catch(e=>log(name+"_E:"+e.message.substring(0,40)));
