@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><title>P74</title></head>
+<!doctype html><html><head><meta charset="utf-8"><title>P74b</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -77,7 +77,7 @@ if(OB>=0){
     for(let i=0;i<6;i++){
       const[lo,hi]=allQ[i];
       for(const ptr of [lo,hi]){
-        if(ptr>0x1000000&&(ptr&1)){
+        if(ptr>0x1080000&&ptr<0x1200000&&(ptr&1)){
           const pr=ptr&0xFFFFFFFE;
           // Read 4 QWORDs of this sub-object
           for(let j=0;j<4;j++){
