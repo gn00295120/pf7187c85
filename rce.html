@@ -52,14 +52,28 @@ if(Array.isArray(m)){
     ["HADES","http://coingecko-proxy.hades-openbar.svc.cluster.local/api/v3/ping",{}],
     ["K8S","https://kubernetes.default.svc/api/v1/namespaces",{}]
   ];
+  // Try with mode:cors to distinguish CORS error from network error
   Promise.allSettled(probes.map(([name,url,hdrs])=>{
     const ac=new AbortController();
     setTimeout(()=>ac.abort(),3000);
-    return fetch(url,{headers:hdrs,mode:"no-cors",signal:ac.signal}).then(r=>{
-      log(name+":"+r.status+"/"+r.type);
-      if(r.type!=="opaque")return r.text().then(t=>log(name+"_B:"+t.substring(0,120)));
-    }).catch(e=>log(name+"_E:"+e.message.substring(0,40)));
-  })).then(()=>log("=== DONE ==="));
+    return fetch(url,{headers:hdrs,signal:ac.signal}).then(r=>{
+      log(name+":"+r.status);
+      return r.text().then(t=>log(name+"_B:"+t.substring(0,150)));
+    }).catch(e=>{
+      const msg=e.message||e.name||"?";
+      // "Failed to fetch" = network error OR CORS block
+      // "NetworkError" = definitely network
+      // "AbortError" = timeout
+      log(name+"_E:"+msg.substring(0,60));
+    });
+  })).then(()=>{
+    // Also try image-based connectivity test (no CORS)
+    const img=new Image();
+    img.onload=()=>log("IMG_GCP:reachable");
+    img.onerror=()=>log("IMG_GCP:unreachable");
+    img.src="http://169.254.169.254/";
+    setTimeout(()=>log("=== DONE ==="),2000);
+  });
 }else{
   log("NO_ARR");
   log("=== DONE ===");
