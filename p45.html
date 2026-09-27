@@ -108,7 +108,7 @@ if(Array.isArray(m)){
       // direct master write to es length qword at obj+8
       const tq=(esAddr-1n)+8n;
       const off=tq-0x1080018n;
-      if(off>0n&&off<0x400000n){
+      if(off>0n&&off<0x1000000n){
         if((off&7n)===0n){
           const idx=Number(off>>3n);
           const v=f2i(m[idx]);
