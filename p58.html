@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><title>P58</title></head>
+<!doctype html><html><head><meta charset="utf-8"><title>P58b</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -61,7 +61,7 @@ if(Array.isArray(m)){
     function hr(addr){
       const off=addr-0x1080018;
       if(off<0||off>0x3FFFFFFE0)return 0n;
-      return f2i(m[Math.floor(off/8)]);
+      try{return f2i(m[Math.floor(off/8)]);}catch(e){return 0n;}
     }
     // Read WasmInstance first 4 QWORDs
     const wi=[];for(let i=0;i<4;i++)wi.push(hr(wr+i*8));
