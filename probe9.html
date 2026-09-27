@@ -38,22 +38,20 @@ log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
 
-  // Find master's own header — look for PIN value in master[0x8000..0x8003]
-  // master's header is [map|properties|elements|length]
-  // elements=PIN=0x1080011, length=MAXS=0x7fdffffe
+  // Search for master's header [DMAP|EMPTY, PIN|MAXS] pattern
+  // PIN=0x1080011, MAXS=0x7fdffffe
+  // The elements+length QWORD = 0x7fdffffe_01080011
+  const targetElemLen=0x7fdffffe01080011n;
   let headerIdx=-1;
   const results=[];
-  for(let k=0x7FFE;k<=0x8005;k++){
+  for(let k=0x7FF0;k<=0x800F;k++){
     try{
       const v=f2i(m[k]);
-      const lo=Number(v&0xffffffffn);
-      const hi=Number(v>>32n);
-      results.push(k.toString(16)+":"+lo.toString(16)+"|"+hi.toString(16));
-      // Look for PIN in lo position
-      if(lo===0x1080011&&hi===0x7fdffffe){headerIdx=k;} // [elements|length]
+      results.push(k.toString(16)+":"+v.toString(16).padStart(16,"0"));
+      if(v===targetElemLen){headerIdx=k;}
     }catch(e){results.push(k.toString(16)+":ERR");break;}
   }
-  log("H: "+results.join(","));
+  log("H: "+results.slice(0,8).join(","));
 
   if(headerIdx>=0){
     log("HDR@"+headerIdx.toString(16));
