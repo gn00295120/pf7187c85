@@ -50,8 +50,8 @@ if(Array.isArray(m)){
   log("H0: "+d.join(","));
   const isPD=(Math.abs(m[0]-10.125)<0.001);
   log("ALIAS: "+isPD);
-  if(isPD){
-    // marker scan
+  {
+    // marker scan (works from ANY committed base)
     let OB=-1;
     for(let k=0x8000;k<0x60000;k++){
       try{
