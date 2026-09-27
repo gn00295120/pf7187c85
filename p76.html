@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><title>P76</title></head>
+<!doctype html><html><head><meta charset="utf-8"><title>P76b</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -58,8 +58,8 @@ if(OB>=0){
   let handleIdx=-1,handleInLo=true;
   for(let i=0;i<6;i++){
     const[lo,hi]=allQ[i];
-    if(lo>=0x400000&&lo<0x500000){handleIdx=i;handleInLo=true;break;}
-    if(hi>=0x400000&&hi<0x500000){handleIdx=i;handleInLo=false;break;}
+    if(lo>=0x403000&&lo<0x405000){handleIdx=i;handleInLo=true;break;}
+    if(hi>=0x403000&&hi<0x405000){handleIdx=i;handleInLo=false;break;}
   }
   if(handleIdx>=0){
     const h=handleInLo?allQ[handleIdx][0]:allQ[handleIdx][1];
@@ -84,7 +84,7 @@ if(OB>=0){
             const off2=pr+j*8-0x1080018;const idx2=Math.floor(off2/8);
             try{
               const slo=flo(m[idx2]),shi=fhi(m[idx2]);
-              if(slo>=0x400000&&slo<0x500000){
+              if(slo>=0x403000&&slo<0x405000){
                 log("H@sub"+ptr.toString(16)+"+"+j+":lo="+slo.toString(16));
                 log("PRE:"+wasmI.exports.f());
                 m[idx2]=w2f(0,shi);
@@ -92,7 +92,7 @@ if(OB>=0){
                 catch(e){log("CRASH:"+e.message);}
                 throw 0;
               }
-              if(shi>=0x400000&&shi<0x500000){
+              if(shi>=0x403000&&shi<0x405000){
                 log("H@sub"+ptr.toString(16)+"+"+j+":hi="+shi.toString(16));
                 log("PRE:"+wasmI.exports.f());
                 m[idx2]=w2f(slo,shi+0x400);
