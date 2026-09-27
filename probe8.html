@@ -37,23 +37,17 @@ const m=re.lastIndex;
 log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
-  // Dump master[0x7FFE..0x8009] — area around master's own header
-  for(let k=0x7FFE;k<=0x8009;k++){
+  // Batch read master[0x8000..0x8007] — collect all before logging
+  const results=[];
+  for(let k=0x8000;k<=0x8007;k++){
     try{
       const v=f2i(m[k]);
       const lo=Number(v&0xffffffffn);
       const hi=Number(v>>32n);
-      // Check for recognizable values
-      let label="";
-      if(lo===0x1032a5d) label+="DMAP ";
-      if(lo===0x7e5||hi===0x7e5) label+="EMPTY ";
-      if(lo===0x939||hi===0x939) label+="FDA_MAP ";
-      if(lo===0x1080011) label+="PIN ";
-      if(lo===0x10000) label+="LEN_8K ";
-      if(Math.abs(m[k]-10.125)<0.001) label+="PD0! ";
-      log("@"+k.toString(16)+": "+lo.toString(16)+"|"+hi.toString(16)+" "+label);
-    }catch(e){log("@"+k.toString(16)+": ERR");break;}
+      results.push(lo.toString(16)+"|"+hi.toString(16));
+    }catch(e){results.push("ERR");break;}
   }
+  log("D: "+results.join(","));
   log("W: "+wasmI.exports.f());
   log("CAGE_RW_OK");
 }else{log("NO_ARR");}
