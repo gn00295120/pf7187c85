@@ -55,11 +55,19 @@ if(Array.isArray(m)){
   }catch(e){log("@20000_E: "+e.message);}
 
   if(!bOK){
-    // Try nearby
-    for(let k=0x1FFF0;k<=0x20010&&!bOK;k++){
+    // Coarse scan: sample every 0x1000 slots
+    for(let k=0;k<0x80000&&!bOK;k+=0x1000){
       try{
-        if(Math.abs(m[k]-50.5)<0.01){log("dblB@"+k.toString(16));bOK=true;}
-      }catch(e){break;}
+        if(Math.abs(m[k]-50.5)<0.01){
+          // Found approximate position, fine-tune
+          for(let j=Math.max(0,k-16);j<k+16;j++){
+            if(Math.abs(m[j]-50.5)<0.001&&Math.abs(m[j+1]-50.502)<0.01){
+              log("dblB@"+j.toString(16));bOK=true;break;
+            }
+          }
+          if(!bOK){log("dblB_approx@"+k.toString(16));bOK=true;}
+        }
+      }catch(e){log("scan_stop@"+k.toString(16));break;}
     }
   }
 
