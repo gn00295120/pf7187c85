@@ -115,14 +115,26 @@ try{
     // Safe scan: try small ranges around expected addresses
     // PIN=0x1100011 → index 0. But PIN might be wrong.
     // Scan 0 to 0x100 (256 slots, ~2KB range from PIN base)
-    for(let k=0;k<256;k++){
+    for(let k=0;k<0x2000;k++){
       try{if(f2i(master[k])===0x4141424243434444n){calK=k;break;}}catch(e){break;}
     }
     pinnedDoubles[0] = 10.125;  // restore
     if(calK>=0){
       log("CAL_FOUND@"+calK.toString(16));
     }else{
-      log("CAL_MISS_0_256");
+      log("CAL_MISS_0_8192");
+      // Report what master actually reads at various offsets
+      for(let k=0;k<8;k++){
+        try{log("m["+k+"]="+f2i(master[k]).toString(16));}catch(e){break;}
+      }
+      // Also report what master reads at 10.125 hex offset: 0x4024400000000000
+      // If 10.125 appears anywhere, log it
+      let found125=false;
+      for(let k=0;k<0x2000;k++){
+        try{if(Math.abs(master[k]-10.125)<0.0001){log("FOUND_10.125@"+k.toString(16));found125=true;break;}}
+        catch(e){log("SCAN_STOP@"+k.toString(16));break;}
+      }
+      if(!found125)log("NO_10.125_IN_8K");
     }
     // Experiment: write unique marker via master, check if pinnedDoubles changes
     const oldPD0 = pinnedDoubles[0];  // should be 10.125
