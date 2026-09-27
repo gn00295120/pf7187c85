@@ -40,7 +40,7 @@ if(Array.isArray(m)){
   let MK=0;
   for(let k=0x8000;k<0x9000;k++){
     const lo=flo(m[k]),hi=fhi(m[k]);
-    if(lo===hi&&(lo&1)&&lo>0x100){MK=lo;break;}
+    if(lo===hi&&(lo&1)&&lo>0x100000){MK=lo;break;}
   }
   if(!MK){log("NO_MK");log("W: "+wasmI.exports.f());log("=== DONE ===");throw 0;}
   log("MK:"+MK.toString(16));
