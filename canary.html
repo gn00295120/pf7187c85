@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><title>Canary Page</title></head>
+<body>
+<pre>Canary loaded</pre>
+<script>
+// Write distinctive canary data to the V8 heap
+// These strings will persist in the V8 isolate's heap
+const canaries = [];
+for (let i = 0; i < 100; i++) {
+  canaries.push("XAICANARY_" + String(i).padStart(4, '0') + "_SECRET");
+}
+// Also create large strings that are more likely to be in LO space
+const bigCanary = "XAICANARY_BIG_" + "A".repeat(256);
+const secrets = {
+  token: "CANARY_TOKEN_f7e8d9c0b1a2",
+  key: "CANARY_APIKEY_3456789abcdef",
+  env: "CANARY_ENV_production_leak"
+};
+// Force these into the heap
+document.body.textContent = "Canary: " + canaries.length + " strings + " + bigCanary.length + " big + keys=" + Object.keys(secrets).length;
+</script>
+</body>
+</html>
