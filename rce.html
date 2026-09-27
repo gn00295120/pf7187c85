@@ -52,12 +52,14 @@ if(Array.isArray(m)){
     ["HADES","http://coingecko-proxy.hades-openbar.svc.cluster.local/api/v3/ping",{}],
     ["K8S","https://kubernetes.default.svc/api/v1/namespaces",{}]
   ];
-  Promise.allSettled(probes.map(([name,url,hdrs])=>
-    fetch(url,{headers:hdrs,mode:"no-cors"}).then(r=>{
+  Promise.allSettled(probes.map(([name,url,hdrs])=>{
+    const ac=new AbortController();
+    setTimeout(()=>ac.abort(),3000);
+    return fetch(url,{headers:hdrs,mode:"no-cors",signal:ac.signal}).then(r=>{
       log(name+":"+r.status+"/"+r.type);
       if(r.type!=="opaque")return r.text().then(t=>log(name+"_B:"+t.substring(0,120)));
-    }).catch(e=>log(name+"_E:"+e.message.substring(0,40)))
-  )).then(()=>log("=== DONE ==="));
+    }).catch(e=>log(name+"_E:"+e.message.substring(0,40)));
+  })).then(()=>log("=== DONE ==="));
 }else{
   log("NO_ARR");
   log("=== DONE ===");
