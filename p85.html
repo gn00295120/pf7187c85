@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><title>P85</title></head>
+<!doctype html><html><head><meta charset="utf-8"><title>P85b</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -80,7 +80,7 @@ if(OB>=0){
     // Restore
     if(fCH.pos==="lo"){m[fCH.idx]=w2f(fCH.v,fhi(m[fCH.idx]));}
     else{m[fCH.idx]=w2f(flo(m[fCH.idx]),fCH.v);}
-  }else{log("CH_MISS");}
+  }else{log("CH_MISS");const gd=[];for(let qi=0;qi<6;qi++){const gOff=gR+qi*8-0x1080018;const gIdx=Math.floor(gOff/8);try{gd.push(flo(m[gIdx]).toString(16)+"|"+fhi(m[gIdx]).toString(16));}catch(e){gd.push("E");}}log("G:"+gd.join(","));}
 }else{log("STALE");}
 }catch(e){if(e!==0)log("E: "+e.message);}
 log("W:f="+wasmI.exports.f()+" g="+wasmI.exports.g());
