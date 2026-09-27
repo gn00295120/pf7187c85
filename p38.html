@@ -122,16 +122,43 @@ if(Array.isArray(m)){
         }
         log("NL:"+es.length.toString(16));
         if(es.length===0x01200000){
-          // scan offsets for non-zero pointer-like qwords
-          const offs=[0x1000,0x8000,0x10000,0x20000,0x40000,0x80000,0x100000,0x200000,0x400000,0x800000,0x1000000];
-          const found=[];
-          for(const off of offs){
-            let s="";
-            for(let j2=0;j2<8;j2++){s+=es.charCodeAt(off+j2).toString(16).padStart(2,"0");}
-            if(s!=="0000000000000000"){found.push(off.toString(16)+":"+s);}
-            if(found.length>=8)break;
+          // Wide scan: read 8 bytes at each offset, look for code pointers
+          const ptrs=[];
+          for(const off of [0x800,0x1000,0x1800,0x2000,0x2800,0x3000,0x3800,0x4000,0x4800,0x5000,0x5800,0x6000,0x6800,0x7000]){
+            try{
+              let qw=0n;
+              for(let b=0;b<8;b++){qw|=BigInt(es.charCodeAt(off+b))<<BigInt(b*8);}
+              // Check for code pointer: top byte 0x55-0x56 or 0x7f
+              const top=Number(qw>>56n);
+              if((top>=0x55&&top<=0x56)||top===0x7f){
+                ptrs.push(off.toString(16)+":"+qw.toString(16));
+              }
+            }catch(e){}
           }
-          log("SCAN:"+(found.length?found.join(","):"all_zero"));
+          // Also scan 0x100-0x7FF at 0x100 steps
+          for(let off=0x100;off<0x800;off+=0x100){
+            try{
+              let qw=0n;
+              for(let b=0;b<8;b++){qw|=BigInt(es.charCodeAt(off+b))<<BigInt(b*8);}
+              const top=Number(qw>>56n);
+              if((top>=0x55&&top<=0x56)||top===0x7f){
+                ptrs.push(off.toString(16)+":"+qw.toString(16));
+              }
+            }catch(e){}
+          }
+          if(ptrs.length>0){
+            log("PTRS:"+ptrs.slice(0,8).join(","));
+          }else{
+            // No code pointers. Show raw bytes at key offsets
+            const r=[];
+            for(const off of [0x100,0x200,0x400,0x800,0x1000,0x2000,0x4000]){
+              try{
+                let h="";for(let b=0;b<8;b++){h+=es.charCodeAt(off+b).toString(16).padStart(2,"0");}
+                r.push(off.toString(16)+":"+h);
+              }catch(e){r.push(off.toString(16)+":E");}
+            }
+            log("RAW:"+r.join(","));
+          }
         }
       }else{log("OFF_BAD:"+off.toString(16));}
     }catch(e){log("ESE:"+e.message);}
