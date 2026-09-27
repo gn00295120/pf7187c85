@@ -74,7 +74,8 @@ if(Array.isArray(m)){
       objB[4]=marker;
       log("FULL_CHAIN_READY");
     }else{log("MARKER_MISS");}
-  }else{
+  }
+  if(!isPD){
     // no alias — dump more for layout diagnosis
     const d2=[];
     for(const off of [0x8000,0x10000,0x20000,0x28000]){
