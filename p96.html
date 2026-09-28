@@ -76,8 +76,8 @@ const sprayBytes=new Uint8Array([
   0x00,0x61,0x73,0x6d, 1,0,0,0,          // magic + version
   1, 5, 1, 0x60, 0, 1, 0x7c,              // type section: () -> f64
   3, 2, 1, 0,                              // func section: 1 func, type 0
-  7, 3, 1, 1, 0x73, 0, 0,                  // export "s" = func 0
-  10, 22, 1, 20, 0,                         // code section: 1 body, 20 bytes, 0 locals
+  7, 5, 1, 1, 0x73, 0, 0,                  // export "s" = func 0 (size=5)
+  10, 23, 1, 21, 0,                         // code section: 1 body, 21 bytes, 0 locals
   0x44, ...M1,                              // f64.const M1 (9 bytes)
   0x44, ...M2,                              // f64.const M2 (9 bytes)
   0xa0,                                     // f64.add
